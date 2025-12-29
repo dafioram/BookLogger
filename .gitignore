@@ -1,0 +1,25 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# --- Virtual Environments ---
+# (Even if using Docker, you might have a local venv for autocomplete)
+venv/
+.venv/
+env/
+
+# --- Environment Variables ---
+# CRITICAL: Never commit your secrets!
+.env
+
+# --- Docker & Data Volumes ---
+# Ignore the mounted data folder containing your live DB and backups
+data/
+
+# --- IDE & OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
