@@ -32,7 +32,7 @@ def init_db():
         google_id TEXT UNIQUE,
         title TEXT NOT NULL,
         author TEXT,
-        publication_year INTEGER,
+        publication_year TEXT,
         cover_url TEXT,
         total_pages INTEGER,
         summary TEXT,
@@ -45,11 +45,13 @@ def init_db():
     ''')
     
     # 2. User Inventory
+    # CHANGED: Split 'status' into 'read_status' (History) and 'shelf_status' (Location)
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS user_books (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         book_id INTEGER NOT NULL,
-        status TEXT DEFAULT 'Unread', -- Unread, Read, DNF, On Deck
+        read_status TEXT DEFAULT 'Unread',  -- 'Unread', 'Read', 'DNF'
+        shelf_status TEXT DEFAULT 'Shelved', -- 'Shelved', 'On Deck'
         is_owned BOOLEAN DEFAULT 0,
         formats_owned TEXT, -- JSON list
         inventory_notes TEXT,

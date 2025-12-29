@@ -14,6 +14,7 @@
     <a href="/book/{{ book.id }}" class="group block">
         <div class="relative mb-2">
             <img src="{{ book.cover_url }}" class="w-full rounded shadow-md group-hover:shadow-lg transition">
+            
             <div class="absolute bottom-1 right-1 flex space-x-1">
                 {% if 'Physical' in book.formats %}
                     <span class="bg-gray-900 text-white text-[10px] px-1 rounded opacity-80">📖</span>
@@ -22,11 +23,20 @@
                     <span class="bg-orange-500 text-white text-[10px] px-1 rounded opacity-80">🎧</span>
                 {% endif %}
             </div>
-            {% if book.status == 'Read' %}
-                <span class="absolute top-1 right-1 bg-green-500 text-white text-xs px-1 rounded">✓</span>
-            {% elif book.status == 'On Deck' %}
-                <span class="absolute top-1 right-1 bg-blue-500 text-white text-xs px-1 rounded">Next</span>
-            {% endif %}
+
+            <div class="absolute top-1 right-1 flex flex-col items-end space-y-1">
+                
+                {% if book.shelf_status == 'On Deck' %}
+                    <span class="bg-blue-500 text-white text-xs px-1 rounded shadow border border-blue-600">Next</span>
+                {% endif %}
+
+                {% if book.read_status == 'Read' %}
+                    <span class="bg-green-500 text-white text-xs px-1 rounded shadow border border-green-600">✓</span>
+                {% elif book.read_status == 'DNF' %}
+                    <span class="bg-red-500 text-white text-xs px-1 rounded shadow border border-red-600">DNF</span>
+                {% endif %}
+                
+            </div>
         </div>
         <h3 class="font-bold text-sm leading-tight group-hover:text-blue-600">{{ book.title }}</h3>
         <p class="text-xs text-gray-500">{{ book.author }}</p>

@@ -13,11 +13,8 @@ from .database import init_db, get_db_connection, backup_database
 # --- LIFESPAN (Startup/Shutdown) ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup logic: Run this before the app starts accepting requests
     init_db()
     yield
-    # Shutdown logic: Run this when the app stops (optional)
-    # e.g., print("Goodbye!")
 
 # --- APP DEFINITION ---
 app = FastAPI(lifespan=lifespan)
@@ -42,6 +39,7 @@ async def dashboard(request: Request):
     conn = get_db_connection()
     
     # Stats: Current Year
+    # Note: "AND l.is_dnf = 0" ensures DNF books count for NOTHING (0 books, 0 hours)
     current_year = date.today().year
     stats_query = """
         SELECT 
@@ -55,12 +53,12 @@ async def dashboard(request: Request):
     """
     stats = conn.execute(stats_query, (str(current_year),)).fetchone()
     
-    # On Deck
+    # On Deck (Updated to use shelf_status)
     on_deck = conn.execute("""
         SELECT ub.id, b.title, b.cover_url 
         FROM user_books ub 
         JOIN books b ON ub.book_id = b.id 
-        WHERE ub.status = 'On Deck'
+        WHERE ub.shelf_status = 'On Deck'
         LIMIT 5
     """).fetchall()
     
@@ -86,8 +84,9 @@ async def dashboard(request: Request):
 @app.get("/library", response_class=HTMLResponse)
 async def library(request: Request, q: str = ""):
     conn = get_db_connection()
+    # Updated query to select both read_status and shelf_status
     query = """
-        SELECT ub.id, b.title, b.author, b.cover_url, ub.status, ub.formats_owned 
+        SELECT ub.id, b.title, b.author, b.cover_url, ub.read_status, ub.shelf_status, ub.formats_owned 
         FROM user_books ub
         JOIN books b ON ub.book_id = b.id
     """
@@ -100,7 +99,6 @@ async def library(request: Request, q: str = ""):
     books = conn.execute(query, params).fetchall()
     conn.close()
     
-    # Helper to parse JSON formats for the template
     books_data = []
     for row in books:
         r = dict(row)
@@ -126,11 +124,9 @@ async def search_google(request: Request, query: str = Form(...)):
         for item in data["items"]:
             vol = item.get("volumeInfo", {})
             
-            # High-res cover fix
             raw_cover = vol.get("imageLinks", {}).get("thumbnail", "/static/placeholder.png")
             cover = raw_cover.replace("http://", "https://").replace("&edge=curl", "").replace("zoom=1", "zoom=0")
             
-            # EXTRACT FIELDS
             genres = vol.get("categories", ["Unknown"])
             rating = vol.get("averageRating", 0)
             
@@ -138,7 +134,7 @@ async def search_google(request: Request, query: str = Form(...)):
                 "google_id": item["id"],
                 "title": vol.get("title", "Unknown Title"),
                 "author": ", ".join(vol.get("authors", ["Unknown"])),
-                "year": vol.get("publishedDate", "")[:4], # Extracts Year
+                "year": vol.get("publishedDate", "")[:4],
                 "cover": cover,
                 "pages": vol.get("pageCount", 0),
                 "summary": vol.get("description", "No description available."),
@@ -158,7 +154,7 @@ async def add_book(
     summary: str = Form(""),
     genres: str = Form(""),       
     rating: float = Form(0.0),    
-    year: str = Form("")          # Captures 'year' from HTML form
+    year: str = Form("")
 ):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -169,7 +165,7 @@ async def add_book(
     
     if row:
         book_id = row['id']
-        # FORCE UPDATE: Fixes "Zombie" books with missing years/genres
+        # FORCE UPDATE: Fixes "Zombie" books
         cursor.execute("""
             UPDATE books 
             SET publication_year = ?, genres = ?, average_rating = ?, summary = ?
@@ -209,14 +205,12 @@ async def book_detail(request: Request, id: int):
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
         
-    # Fetch Logs
     logs = conn.execute("""
         SELECT * FROM reading_logs WHERE user_book_id = ? ORDER BY date_finished DESC
     """, (id,)).fetchall()
     
     conn.close()
     
-    # Parse Formats JSON
     formats_owned = json.loads(book['formats_owned']) if book['formats_owned'] else []
     
     return templates.TemplateResponse("book_detail.html", {
@@ -226,12 +220,10 @@ async def book_detail(request: Request, id: int):
         "formats_owned": formats_owned
     })
 
-# --- INVENTORY UPDATES ---
-
 @app.post("/book/{id}/update_inventory")
 async def update_inventory(
     id: int, 
-    status: str = Form(...),
+    shelf_status: str = Form(...), # UPDATED: Accepts shelf_status (Shelved/On Deck)
     inventory_notes: str = Form(""),
     physical: str = Form(None),
     kindle: str = Form(None),
@@ -244,11 +236,12 @@ async def update_inventory(
     if audible: formats.append("Audible")
     
     conn = get_db_connection()
+    # UPDATED: Only updates shelf_status (Location), ignores read_status (History)
     conn.execute("""
         UPDATE user_books 
-        SET status = ?, inventory_notes = ?, formats_owned = ?
+        SET shelf_status = ?, inventory_notes = ?, formats_owned = ?
         WHERE id = ?
-    """, (status, inventory_notes, json.dumps(formats), id))
+    """, (shelf_status, inventory_notes, json.dumps(formats), id))
     conn.commit()
     conn.close()
     
@@ -265,14 +258,24 @@ async def add_log(
     is_dnf: bool = Form(False)
 ):
     conn = get_db_connection()
+    
+    # 1. Insert Log
     conn.execute("""
         INSERT INTO reading_logs (user_book_id, date_finished, hours_read, format_consumed, pace, log_notes, is_dnf)
         VALUES (?, ?, ?, ?, ?, ?, ?)
     """, (id, date_finished, hours, format_consumed, pace, notes, is_dnf))
     
-    # Update status to Read if not DNF
+    # 2. Update Status (High Water Mark Logic)
     if not is_dnf:
-        conn.execute("UPDATE user_books SET status = 'Read' WHERE id = ?", (id,))
+        # If finished successfully, ALWAYS mark as Read
+        conn.execute("UPDATE user_books SET read_status = 'Read' WHERE id = ?", (id,))
+    else:
+        # If DNF, only mark DNF if it wasn't already Read
+        conn.execute("""
+            UPDATE user_books 
+            SET read_status = 'DNF' 
+            WHERE id = ? AND read_status != 'Read'
+        """, (id,))
         
     conn.commit()
     conn.close()
@@ -285,5 +288,4 @@ async def trigger_backup():
     
 if __name__ == "__main__":
     import uvicorn
-    # This block allows you to run 'python -m app.main' on Windows
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)

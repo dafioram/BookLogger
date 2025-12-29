@@ -3,7 +3,7 @@
 {% block content %}
 <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
     
-<div class="md:col-span-1 text-center space-y-4">
+    <div class="md:col-span-1 text-center space-y-4">
         <img src="{{ book.cover_url }}" class="w-auto max-w-xs mx-auto rounded-lg shadow-lg">
         
         <div>
@@ -47,22 +47,42 @@
     <div class="md:col-span-2 space-y-8">
 
         <div class="bg-white p-6 rounded-lg shadow border border-gray-200">
-            <h2 class="text-lg font-bold border-b pb-2 mb-4">Inventory & Status</h2>
+            <h2 class="text-lg font-bold border-b pb-2 mb-4">Inventory & Queue</h2>
+            
             <form action="/book/{{ book.id }}/update_inventory" method="post" class="space-y-4">
-                <div class="flex space-x-4">
-                    <label class="block">
-                        <span class="text-sm text-gray-500">Status</span>
-                        <select name="status" class="block w-full border rounded p-1 mt-1 bg-gray-50">
-                            <option value="Unread" {% if book.status == 'Unread' %}selected{% endif %}>Unread</option>
-                            <option value="On Deck" {% if book.status == 'On Deck' %}selected{% endif %}>On Deck</option>
-                            <option value="Read" {% if book.status == 'Read' %}selected{% endif %}>Read</option>
-                            <option value="DNF" {% if book.status == 'DNF' %}selected{% endif %}>DNF</option>
-                        </select>
-                    </label>
-                </div>
                 
                 <div>
-                    <span class="text-sm text-gray-500 block mb-1">Formats Owned</span>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Queue Location</label>
+                    <div class="flex space-x-4">
+                        <label class="flex items-center space-x-2 cursor-pointer bg-gray-50 px-3 py-2 rounded border hover:bg-gray-100">
+                            <input type="radio" name="shelf_status" value="Shelved" 
+                                   class="text-slate-800 focus:ring-slate-800"
+                                   {% if book.shelf_status == 'Shelved' %}checked{% endif %}>
+                            <span>🗄️ Shelved</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer bg-blue-50 px-3 py-2 rounded border border-blue-100 hover:bg-blue-100">
+                            <input type="radio" name="shelf_status" value="On Deck" 
+                                   class="text-blue-600 focus:ring-blue-600"
+                                   {% if book.shelf_status == 'On Deck' %}checked{% endif %}>
+                            <span class="font-bold text-blue-700">🚀 On Deck</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div>
+                    <span class="block text-xs font-bold text-gray-500 uppercase mb-1">History Status</span>
+                    <div class="inline-block px-3 py-1 rounded text-sm font-bold border
+                        {% if book.read_status == 'Read' %} bg-green-100 text-green-700 border-green-200
+                        {% elif book.read_status == 'DNF' %} bg-red-100 text-red-700 border-red-200
+                        {% else %} bg-gray-100 text-gray-600 border-gray-200 {% endif %}">
+                        {% if book.read_status == 'Read' %} ✅ Read
+                        {% elif book.read_status == 'DNF' %} 🚫 DNF
+                        {% else %} Unread {% endif %}
+                    </div>
+                </div>
+
+                <div>
+                    <span class="block text-xs font-bold text-gray-500 uppercase mb-1">Formats Owned</span>
                     <div class="flex space-x-4">
                         <label class="flex items-center"><input type="checkbox" name="physical" class="mr-2" {% if 'Physical' in formats_owned %}checked{% endif %}> Physical</label>
                         <label class="flex items-center"><input type="checkbox" name="kindle" class="mr-2" {% if 'Kindle' in formats_owned %}checked{% endif %}> Kindle</label>
@@ -71,12 +91,12 @@
                 </div>
 
                 <div>
-                    <span class="text-sm text-gray-500">Inventory Notes</span>
-                    <input type="text" name="inventory_notes" value="{{ book.inventory_notes or '' }}" class="w-full border rounded p-1 mt-1">
+                    <span class="block text-xs font-bold text-gray-500 uppercase mb-1">Inventory Notes</span>
+                    <input type="text" name="inventory_notes" value="{{ book.inventory_notes or '' }}" class="w-full border rounded p-2 text-sm">
                 </div>
                 
-                <button type="submit" class="text-sm bg-blue-50 text-blue-700 px-3 py-1 rounded hover:bg-blue-100">
-                    Update Inventory
+                <button type="submit" class="w-full bg-slate-800 text-white py-2 rounded font-bold hover:bg-slate-700 transition">
+                    Save Changes
                 </button>
             </form>
         </div>
@@ -94,6 +114,9 @@
                     <span class="font-semibold">{{ log.hours_read }} hours</span> 
                     <span class="text-gray-500 mx-2">•</span> 
                     Pace: {{ log.pace }}
+                    {% if log.is_dnf %}
+                    <span class="ml-2 text-red-600 font-bold uppercase text-xs border border-red-200 px-1 rounded">DNF</span>
+                    {% endif %}
                 </div>
                 {% if log.log_notes %}
                 <p class="mt-2 text-gray-600 italic text-sm">"{{ log.log_notes }}"</p>
@@ -102,7 +125,7 @@
             {% endfor %}
 
             <details class="mt-4">
-                <summary class="cursor-pointer text-blue-600 font-semibold">+ Log a Read</summary>
+                <summary class="cursor-pointer text-blue-600 font-semibold">+ Log a Session</summary>
                 <form action="/book/{{ book.id }}/add_log" method="post" class="mt-4 space-y-3 bg-white p-4 rounded border">
                     <div class="grid grid-cols-2 gap-4">
                         <label class="block text-sm">
@@ -140,12 +163,14 @@
                         <textarea name="notes" class="w-full border rounded p-1"></textarea>
                     </label>
 
-                    <label class="flex items-center text-sm text-red-600">
-                        <input type="checkbox" name="is_dnf" class="mr-2">
-                        Did Not Finish (DNF)
-                    </label>
+                    <div class="bg-red-50 p-2 rounded border border-red-100">
+                        <label class="flex items-center text-sm text-red-700 font-bold cursor-pointer">
+                            <input type="checkbox" name="is_dnf" class="mr-2 w-4 h-4 text-red-600">
+                            Did Not Finish (DNF)
+                        </label>
+                    </div>
 
-                    <button type="submit" class="w-full bg-slate-800 text-white py-2 rounded">Save Log</button>
+                    <button type="submit" class="w-full bg-slate-800 text-white py-2 rounded font-bold hover:bg-slate-700">Save Log</button>
                 </form>
             </details>
         </div>
