@@ -2,22 +2,28 @@ from fastapi import FastAPI, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
+from contextlib import asynccontextmanager
 import httpx
 import json
 import math
 from datetime import date
 from .database import init_db, get_db_connection, backup_database
 
-app = FastAPI()
+# --- LIFESPAN (Startup/Shutdown) ---
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup logic: Run this before the app starts accepting requests
+    init_db()
+    yield
+    # Shutdown logic: Run this when the app stops (optional)
+    # e.g., print("Goodbye!")
+
+# --- APP DEFINITION ---
+app = FastAPI(lifespan=lifespan)
 
 # Mount static files and templates
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
-
-# Initialize DB on startup
-@app.on_event("startup")
-def on_startup():
-    init_db()
 
 # --- UTILITIES ---
 def format_minutes(mins):
@@ -257,3 +263,9 @@ async def add_log(
 async def trigger_backup():
     result = backup_database()
     return result
+    
+if __name__ == "__main__":
+    import uvicorn
+    # This block only runs if you execute 'python -m app.main'
+    # It is IGNORED if you run 'uvicorn app.main:app'
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
