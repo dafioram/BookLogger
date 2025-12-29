@@ -125,13 +125,23 @@ async def search_google(request: Request, query: str = Form(...)):
     if "items" in data:
         for item in data["items"]:
             vol = item.get("volumeInfo", {})
+            
+            # 1. Get the raw URL
+            raw_cover = vol.get("imageLinks", {}).get("thumbnail", "/static/placeholder.png")
+            
+            # 2. Clean it up for high quality
+            # - Force HTTPS
+            # - Remove "edge=curl" (the bent page corner)
+            # - Change "zoom=1" to "zoom=0" (get the biggest available size)
+            cover = raw_cover.replace("http://", "https://").replace("&edge=curl", "").replace("zoom=1", "zoom=0")
+            
             # Safe extraction
             results.append({
                 "google_id": item["id"],
                 "title": vol.get("title", "Unknown Title"),
                 "author": ", ".join(vol.get("authors", ["Unknown"])),
                 "year": vol.get("publishedDate", "")[:4],
-                "cover": vol.get("imageLinks", {}).get("thumbnail", "/static/placeholder.png"),
+                "cover": cover,
                 "pages": vol.get("pageCount", 0),
                 "summary": vol.get("description", "")
             })

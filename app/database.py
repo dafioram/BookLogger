@@ -2,8 +2,10 @@ import sqlite3
 import os
 from datetime import datetime
 
-# Paths inside the container
-DB_FOLDER = "/app/data"
+# Use a relative path so it works on Windows AND Docker
+# If running from root, this puts data in ./data
+DB_FOLDER = os.path.join(os.getcwd(), "data") 
+
 DB_PATH = os.path.join(DB_FOLDER, "library.db")
 BACKUP_DIR = os.path.join(DB_FOLDER, "backups")
 
