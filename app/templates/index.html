@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+    <div class="bg-white p-6 rounded-lg shadow border border-gray-200">
+        <h2 class="text-lg font-semibold text-gray-700 mb-4">{{ year }} at a Glance</h2>
+        <div class="grid grid-cols-3 gap-4 text-center">
+            <div>
+                <p class="text-3xl font-bold text-blue-600">{{ stats.total_hours or 0 }}</p>
+                <p class="text-xs text-gray-500 uppercase">Hours</p>
+            </div>
+            <div>
+                <p class="text-3xl font-bold text-green-600">{{ stats.books_read or 0 }}</p>
+                <p class="text-xs text-gray-500 uppercase">Books</p>
+            </div>
+            <div>
+                <p class="text-3xl font-bold text-purple-600">{{ stats.total_pages or 0 }}</p>
+                <p class="text-xs text-gray-500 uppercase">Pages</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow border border-gray-200">
+        <h2 class="text-lg font-semibold text-gray-700 mb-4">On Deck</h2>
+        <div class="flex space-x-4 overflow-x-auto">
+            {% for book in on_deck %}
+            <a href="/book/{{ book.id }}" class="flex-shrink-0 w-20 group">
+                <img src="{{ book.cover_url }}" class="w-full rounded shadow group-hover:ring-2 ring-blue-500 transition">
+            </a>
+            {% else %}
+            <p class="text-gray-400 italic">No books in queue.</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<h3 class="text-xl font-bold mb-4">Recent Logs</h3>
+<div class="bg-white rounded-lg shadow overflow-hidden">
+    <table class="w-full text-left">
+        <thead class="bg-gray-50">
+            <tr>
+                <th class="p-3 text-xs font-medium text-gray-500 uppercase">Date</th>
+                <th class="p-3 text-xs font-medium text-gray-500 uppercase">Book</th>
+                <th class="p-3 text-xs font-medium text-gray-500 uppercase">Time</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+            {% for log in recent %}
+            <tr class="{% if log.is_dnf %}bg-red-50{% endif %}">
+                <td class="p-3 text-sm text-gray-600">{{ log.date_finished }}</td>
+                <td class="p-3 font-medium">{{ log.title }}</td>
+                <td class="p-3 text-sm">{{ log.hours_read }} hrs</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

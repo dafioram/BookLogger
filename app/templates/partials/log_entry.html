@@ -1,0 +1,14 @@
+<div class="bg-white p-4 rounded shadow-sm mb-3 {% if log.is_dnf %}border-l-4 border-red-400{% else %}border-l-4 border-green-400{% endif %}">
+    <div class="flex justify-between">
+        <span class="font-bold">{{ log.date_finished }}</span>
+        <span class="text-sm bg-gray-100 px-2 py-0.5 rounded">{{ log.format_consumed }}</span>
+    </div>
+    <div class="mt-2 text-sm">
+        <span class="font-semibold">{{ log.hours_read }} hours</span> 
+        <span class="text-gray-500 mx-2">•</span> 
+        Pace: {{ log.pace }}
+    </div>
+    {% if log.log_notes %}
+    <p class="mt-2 text-gray-600 italic text-sm">"{{ log.log_notes }}"</p>
+    {% endif %}
+</div>

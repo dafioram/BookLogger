@@ -1,0 +1,23 @@
+{% for r in results %}
+<div class="flex items-start bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+    <img src="{{ r.cover }}" class="w-16 h-24 object-cover rounded shadow mr-4">
+    <div class="flex-1">
+        <h3 class="font-bold text-lg">{{ r.title }}</h3>
+        <p class="text-sm text-gray-600">{{ r.author }} ({{ r.year }})</p>
+        <p class="text-xs text-gray-400 mt-1">{{ r.pages }} pages</p>
+    </div>
+    <form hx-post="/api/add_book" hx-swap="outerHTML">
+        <input type="hidden" name="google_id" value="{{ r.google_id }}">
+        <input type="hidden" name="title" value="{{ r.title }}">
+        <input type="hidden" name="author" value="{{ r.author }}">
+        <input type="hidden" name="cover" value="{{ r.cover }}">
+        <input type="hidden" name="pages" value="{{ r.pages }}">
+        <input type="hidden" name="summary" value="{{ r.summary }}">
+        <button type="submit" class="bg-slate-800 text-white px-4 py-2 rounded text-sm hover:bg-slate-700 transition">
+            + Add
+        </button>
+    </form>
+</div>
+{% else %}
+<p class="text-gray-500 text-center">No results found.</p>
+{% endfor %}

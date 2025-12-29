@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BookTracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+</head>
+<body class="bg-gray-100 text-gray-900 font-sans min-h-screen">
+
+    <nav class="bg-slate-800 text-white p-4 shadow-md">
+        <div class="container mx-auto flex justify-between items-center">
+            <a href="/" class="text-xl font-bold tracking-tight">📚 BookTracker</a>
+            <div class="space-x-4">
+                <a href="/" class="hover:text-blue-300">Dashboard</a>
+                <a href="/library" class="hover:text-blue-300">Library</a>
+                <a href="/search" class="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded text-sm transition">
+                    + Add Book
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container mx-auto p-4">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="text-center text-gray-500 text-sm py-6">
+        <button hx-post="/system/backup" hx-swap="innerHTML" class="underline hover:text-gray-700">
+            Run Backup
+        </button>
+    </footer>
+
+</body>
+</html>
