@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 import httpx
 import json
 import math
+import os
 from datetime import date
 from .database import init_db, get_db_connection, backup_database
 
@@ -114,8 +115,7 @@ async def search_page(request: Request):
 
 @app.post("/api/search_google")
 async def search_google(request: Request, query: str = Form(...)):
-    if not query:
-        return ""
+    if not query: return ""
     
     async with httpx.AsyncClient() as client:
         resp = await client.get(f"https://www.googleapis.com/books/v1/volumes?q={query}&maxResults=10")
@@ -126,24 +126,24 @@ async def search_google(request: Request, query: str = Form(...)):
         for item in data["items"]:
             vol = item.get("volumeInfo", {})
             
-            # 1. Get the raw URL
+            # High-res cover fix
             raw_cover = vol.get("imageLinks", {}).get("thumbnail", "/static/placeholder.png")
-            
-            # 2. Clean it up for high quality
-            # - Force HTTPS
-            # - Remove "edge=curl" (the bent page corner)
-            # - Change "zoom=1" to "zoom=0" (get the biggest available size)
             cover = raw_cover.replace("http://", "https://").replace("&edge=curl", "").replace("zoom=1", "zoom=0")
             
-            # Safe extraction
+            # EXTRACT FIELDS
+            genres = vol.get("categories", ["Unknown"])
+            rating = vol.get("averageRating", 0)
+            
             results.append({
                 "google_id": item["id"],
                 "title": vol.get("title", "Unknown Title"),
                 "author": ", ".join(vol.get("authors", ["Unknown"])),
-                "year": vol.get("publishedDate", "")[:4],
+                "year": vol.get("publishedDate", "")[:4], # Extracts Year
                 "cover": cover,
                 "pages": vol.get("pageCount", 0),
-                "summary": vol.get("description", "")
+                "summary": vol.get("description", "No description available."),
+                "genres": ", ".join(genres),
+                "rating": rating
             })
             
     return templates.TemplateResponse("partials/search_row.html", {"request": request, "results": results})
@@ -155,31 +155,40 @@ async def add_book(
     author: str = Form(...), 
     cover: str = Form(...),
     pages: int = Form(0),
-    summary: str = Form("")
+    summary: str = Form(""),
+    genres: str = Form(""),       
+    rating: float = Form(0.0),    
+    year: str = Form("")          # Captures 'year' from HTML form
 ):
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # 1. Check if book exists in Global Reference
+    # Check Reference
     cursor.execute("SELECT id FROM books WHERE google_id = ?", (google_id,))
     row = cursor.fetchone()
     
     if row:
         book_id = row['id']
-    else:
+        # FORCE UPDATE: Fixes "Zombie" books with missing years/genres
         cursor.execute("""
-            INSERT INTO books (google_id, title, author, cover_url, total_pages, summary)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (google_id, title, author, cover, pages, summary))
+            UPDATE books 
+            SET publication_year = ?, genres = ?, average_rating = ?, summary = ?
+            WHERE id = ?
+        """, (year, genres, rating, summary, book_id))
+    else:
+        # INSERT NEW BOOK
+        cursor.execute("""
+            INSERT INTO books (google_id, title, author, cover_url, total_pages, summary, genres, average_rating, publication_year)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (google_id, title, author, cover, pages, summary, genres, rating, year))
         book_id = cursor.lastrowid
     
-    # 2. Check if user already has it
+    # Check User Library
     cursor.execute("SELECT id FROM user_books WHERE book_id = ?", (book_id,))
     if cursor.fetchone():
         conn.close()
         return "Already in Library"
     
-    # 3. Add to User Library
     cursor.execute("INSERT INTO user_books (book_id) VALUES (?)", (book_id,))
     conn.commit()
     conn.close()
@@ -276,6 +285,5 @@ async def trigger_backup():
     
 if __name__ == "__main__":
     import uvicorn
-    # This block only runs if you execute 'python -m app.main'
-    # It is IGNORED if you run 'uvicorn app.main:app'
+    # This block allows you to run 'python -m app.main' on Windows
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
