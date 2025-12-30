@@ -19,7 +19,7 @@ def init_db():
     cursor.execute("PRAGMA journal_mode=WAL;")
     
     # 1. BOOKS (Reference)
-    # Added: isbn13, goodreads_id
+    # Added: cover_path (TEXT) for local image storage
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS books (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -30,6 +30,7 @@ def init_db():
         author TEXT,
         publication_year TEXT,
         cover_url TEXT,
+        cover_path TEXT,  -- New Local Path Column
         total_pages INTEGER,
         summary TEXT,
         genres TEXT,

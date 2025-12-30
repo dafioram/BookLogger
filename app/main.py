@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Request, Form, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
@@ -21,11 +21,6 @@ os.makedirs("app/static", exist_ok=True)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 
-# --- CUSTOM ERROR HANDLERS ---
-@app.exception_handler(404)
-async def custom_404_handler(request: Request, exc: StarletteHTTPException):
-    return templates.TemplateResponse("404.html", {"request": request}, status_code=404)
-
 # --- UTILITIES ---
 def format_minutes(mins):
     if not mins: return ""
@@ -34,6 +29,29 @@ def format_minutes(mins):
     return f"{h}h {m}m"
 
 templates.env.filters["format_minutes"] = format_minutes
+
+def process_book_row(row):
+    """
+    Converts a SQLite Row to a dict and handles logic like:
+    - JSON parsing for formats
+    - Swapping cover_url for cover_path if it exists
+    """
+    r = dict(row)
+    
+    # 1. Format Parsing
+    if 'formats_owned' in r:
+        r['formats'] = json.loads(r['formats_owned']) if r['formats_owned'] else []
+    
+    # 2. IMAGE LOGIC: If local path exists, override the remote URL
+    if r.get('cover_path'):
+        r['cover_url'] = r['cover_path']
+        
+    return r
+
+# --- CUSTOM ERROR HANDLERS ---
+@app.exception_handler(404)
+async def custom_404_handler(request: Request, exc: StarletteHTTPException):
+    return templates.TemplateResponse("404.html", {"request": request}, status_code=404)
 
 # --- ROUTES ---
 @app.get("/favicon.ico", include_in_schema=False)
@@ -44,7 +62,7 @@ async def favicon():
 async def dashboard(request: Request):
     conn = get_db_connection()
     
-    # 1. Lifetime Stats
+    # 1. Lifetime Stats (All Time)
     stats_query = """
         SELECT 
             COUNT(DISTINCT l.id) as books_read, 
@@ -58,15 +76,17 @@ async def dashboard(request: Request):
     library_count = conn.execute("SELECT COUNT(*) FROM user_books").fetchone()[0]
     
     # 3. On Deck (List + Count)
-    on_deck = conn.execute("""
-        SELECT ub.id, b.title, b.cover_url 
+    # Note: We fetch cover_path too so process_book_row works
+    on_deck_rows = conn.execute("""
+        SELECT ub.id, b.title, b.cover_url, b.cover_path
         FROM user_books ub 
         JOIN books b ON ub.book_id = b.id 
         WHERE ub.shelf_status = 'On Deck'
         LIMIT 5
     """).fetchall()
+    on_deck = [process_book_row(r) for r in on_deck_rows]
     
-    # NEW: Count total items in "On Deck"
+    # Count total items in "On Deck"
     on_deck_count = conn.execute("SELECT COUNT(*) FROM user_books WHERE shelf_status = 'On Deck'").fetchone()[0]
     
     # 4. Recent Logs
@@ -85,7 +105,7 @@ async def dashboard(request: Request):
         "stats": stats, 
         "total_books": library_count, 
         "on_deck": on_deck, 
-        "on_deck_count": on_deck_count, # Pass count to template
+        "on_deck_count": on_deck_count, 
         "recent": recent
     })
 
@@ -133,7 +153,6 @@ async def stats_page(request: Request, year: int = None):
         data_hours[idx] = round(r['hours'], 1)
         data_pages[idx] = r['pages']
         
-    # FIX: Pass RAW LISTS (removed json.dumps)
     return templates.TemplateResponse("stats.html", {
         "request": request,
         "selected_year": selected_year,
@@ -147,8 +166,9 @@ async def stats_page(request: Request, year: int = None):
 @app.get("/library", response_class=HTMLResponse)
 async def library(request: Request, q: str = ""):
     conn = get_db_connection()
+    # ADDED cover_path to query
     query = """
-        SELECT ub.id, b.title, b.author, b.cover_url, ub.read_status, ub.shelf_status, ub.formats_owned 
+        SELECT ub.id, b.title, b.author, b.cover_url, b.cover_path, ub.read_status, ub.shelf_status, ub.formats_owned, ub.is_owned
         FROM user_books ub
         JOIN books b ON ub.book_id = b.id
     """
@@ -158,14 +178,11 @@ async def library(request: Request, q: str = ""):
         params = [f"%{q}%", f"%{q}%"]
     
     query += " ORDER BY ub.date_added DESC"
-    books = conn.execute(query, params).fetchall()
+    books_rows = conn.execute(query, params).fetchall()
     conn.close()
     
-    books_data = []
-    for row in books:
-        r = dict(row)
-        r['formats'] = json.loads(r['formats_owned']) if r['formats_owned'] else []
-        books_data.append(r)
+    # Apply Helper Logic
+    books_data = [process_book_row(r) for r in books_rows]
 
     return templates.TemplateResponse("library.html", {"request": request, "books": books_data, "query": q})
 
@@ -224,7 +241,7 @@ async def add_book(
     genres: str = Form(""),       
     rating: float = Form(0.0),    
     year: str = Form(""),
-    isbn13: str = Form(None) # Capture ISBN
+    isbn13: str = Form(None)
 ):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -240,6 +257,7 @@ async def add_book(
             WHERE id = ?
         """, (year, genres, rating, summary, isbn13, book_id))
     else:
+        # Note: cover_path defaults to NULL automatically
         cursor.execute("""
             INSERT INTO books (google_id, isbn13, title, author, cover_url, total_pages, summary, genres, average_rating, publication_year)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -260,24 +278,26 @@ async def add_book(
 @app.get("/book/{id}", response_class=HTMLResponse)
 async def book_detail(request: Request, id: int):
     conn = get_db_connection()
-    book = conn.execute("""
+    # ADDED cover_path to query
+    row = conn.execute("""
         SELECT ub.*, b.* FROM user_books ub 
         JOIN books b ON ub.book_id = b.id 
         WHERE ub.id = ?
     """, (id,)).fetchone()
     
-    if not book: raise HTTPException(status_code=404, detail="Book not found")
+    if not row: raise HTTPException(status_code=404, detail="Book not found")
+    
+    # Apply Logic
+    book = process_book_row(row)
         
     logs = conn.execute("SELECT * FROM reading_logs WHERE user_book_id = ? ORDER BY date_finished DESC", (id,)).fetchall()
     conn.close()
-    
-    formats_owned = json.loads(book['formats_owned']) if book['formats_owned'] else []
     
     return templates.TemplateResponse("book_detail.html", {
         "request": request, 
         "book": book, 
         "logs": logs,
-        "formats_owned": formats_owned
+        "formats_owned": book['formats'] # Use the processed list
     })
 
 @app.post("/book/{id}/delete")
@@ -337,34 +357,45 @@ async def update_inventory(
     
     return RedirectResponse(url=f"/book/{id}", status_code=303)
 
-# ... [Keep add_log, edit_log, trigger_backup from previous versions] ...
-# (They don't need changes for this update)
+@app.post("/book/{id}/add_log")
+async def add_log(
+    id: int, date_finished: str = Form(...), hours: float = Form(...), 
+    format_consumed: str = Form(...), pace: str = Form("Medium"), 
+    notes: str = Form(""), is_dnf: bool = Form(False)
+):
+    conn = get_db_connection()
+    conn.execute("""
+        INSERT INTO reading_logs (user_book_id, date_finished, hours_read, format_consumed, pace, log_notes, is_dnf)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (id, date_finished, hours, format_consumed, pace, notes, is_dnf))
+    
+    if not is_dnf:
+        conn.execute("UPDATE user_books SET read_status = 'Read' WHERE id = ?", (id,))
+    else:
+        conn.execute("UPDATE user_books SET read_status = 'DNF' WHERE id = ? AND read_status != 'Read'", (id,))
+    
+    conn.commit()
+    conn.close()
+    return RedirectResponse(url=f"/book/{id}", status_code=303)
 
-# --- NEW AUTHOR ROUTE ---
+# --- AUTHOR ROUTE ---
 @app.get("/author/{name}", response_class=HTMLResponse)
 async def author_page(request: Request, name: str):
     conn = get_db_connection()
-    
-    # We use LIKE to find the author. 
-    # This handles exact matches perfectly.
+    # ADDED cover_path to query
     query = """
-        SELECT ub.id, b.title, b.author, b.cover_url, ub.read_status, ub.shelf_status, ub.formats_owned, ub.is_owned
+        SELECT ub.id, b.title, b.author, b.cover_url, b.cover_path, ub.read_status, ub.shelf_status, ub.formats_owned, ub.is_owned
         FROM user_books ub
         JOIN books b ON ub.book_id = b.id
         WHERE b.author LIKE ?
         ORDER BY b.publication_year DESC
     """
     
-    # The % signs allow for flexibility if your data is messy
-    books = conn.execute(query, (f"%{name}%",)).fetchall()
+    books_rows = conn.execute(query, (f"%{name}%",)).fetchall()
     conn.close()
     
-    # Parse formats JSON for the template
-    books_data = []
-    for row in books:
-        r = dict(row)
-        r['formats'] = json.loads(r['formats_owned']) if r['formats_owned'] else []
-        books_data.append(r)
+    # Apply Helper Logic
+    books_data = [process_book_row(r) for r in books_rows]
 
     return templates.TemplateResponse("author.html", {
         "request": request, 
@@ -372,20 +403,7 @@ async def author_page(request: Request, name: str):
         "author_name": name
     })
 
-# Re-pasting add_log just for completeness so you don't miss it
-@app.post("/book/{id}/add_log")
-async def add_log(id: int, date_finished: str = Form(...), hours: float = Form(...), format_consumed: str = Form(...), pace: str = Form("Medium"), notes: str = Form(""), is_dnf: bool = Form(False)):
-    conn = get_db_connection()
-    conn.execute("INSERT INTO reading_logs (user_book_id, date_finished, hours_read, format_consumed, pace, log_notes, is_dnf) VALUES (?, ?, ?, ?, ?, ?, ?)", (id, date_finished, hours, format_consumed, pace, notes, is_dnf))
-    if not is_dnf:
-        conn.execute("UPDATE user_books SET read_status = 'Read' WHERE id = ?", (id,))
-    else:
-        conn.execute("UPDATE user_books SET read_status = 'DNF' WHERE id = ? AND read_status != 'Read'", (id,))
-    conn.commit()
-    conn.close()
-    return RedirectResponse(url=f"/book/{id}", status_code=303)
-
-# Log Management Routes (Edit/Delete Log) from previous step
+# --- LOG MANAGEMENT ---
 @app.get("/log/{log_id}/edit", response_class=HTMLResponse)
 async def edit_log_page(request: Request, log_id: int):
     conn = get_db_connection()
@@ -395,9 +413,18 @@ async def edit_log_page(request: Request, log_id: int):
     return templates.TemplateResponse("edit_log.html", {"request": request, "log": log})
 
 @app.post("/log/{log_id}/edit")
-async def update_log(log_id: int, date_finished: str = Form(...), hours: float = Form(...), format_consumed: str = Form(...), pace: str = Form("Medium"), notes: str = Form(""), is_dnf: bool = Form(False)):
+async def update_log(
+    log_id: int, date_finished: str = Form(...), hours: float = Form(...), 
+    format_consumed: str = Form(...), pace: str = Form("Medium"), 
+    notes: str = Form(""), is_dnf: bool = Form(False)
+):
     conn = get_db_connection()
-    conn.execute("UPDATE reading_logs SET date_finished = ?, hours_read = ?, format_consumed = ?, pace = ?, log_notes = ?, is_dnf = ? WHERE id = ?", (date_finished, hours, format_consumed, pace, notes, is_dnf, log_id))
+    conn.execute("""
+        UPDATE reading_logs 
+        SET date_finished = ?, hours_read = ?, format_consumed = ?, pace = ?, log_notes = ?, is_dnf = ? 
+        WHERE id = ?
+    """, (date_finished, hours, format_consumed, pace, notes, is_dnf, log_id))
+    
     row = conn.execute("SELECT user_book_id FROM reading_logs WHERE id = ?", (log_id,)).fetchone()
     conn.commit()
     conn.close()
@@ -420,7 +447,7 @@ async def delete_log(log_id: int):
 @app.post("/system/backup", response_class=HTMLResponse)
 async def trigger_backup(request: Request):
     # 1. Run the backup
-    result = backup_database() # Returns "Success: /path/to/file" or "Error: ..."
+    result = backup_database() 
     
     # 2. Parse the result to look nicer
     message = result
@@ -429,7 +456,7 @@ async def trigger_backup(request: Request):
     
     if is_success:
         full_path = result.replace("Success: ", "")
-        filename = os.path.basename(full_path) # Just get "library_2025-..."
+        filename = os.path.basename(full_path)
         message = "Database successfully backed up."
     
     # 3. Show the success page
