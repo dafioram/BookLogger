@@ -36,6 +36,9 @@ def format_minutes(mins):
 templates.env.filters["format_minutes"] = format_minutes
 
 # --- ROUTES ---
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return Response(status_code=204)
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
