@@ -35,33 +35,30 @@ templates.env.filters["format_minutes"] = format_minutes
 async def dashboard(request: Request, year: int = None):
     conn = get_db_connection()
     
-    # Default to current year if none selected
+    # Default to current year
     current_year = date.today().year
     selected_year = year if year else current_year
     
-    # 1. Get available years for the dropdown
-    years_rows = conn.execute("""
-        SELECT DISTINCT strftime('%Y', date_finished) as y 
-        FROM reading_logs WHERE date_finished IS NOT NULL ORDER BY y DESC
-    """).fetchall()
+    # 1. Get available years
+    years_rows = conn.execute("SELECT DISTINCT strftime('%Y', date_finished) as y FROM reading_logs WHERE date_finished IS NOT NULL ORDER BY y DESC").fetchall()
     available_years = [int(r['y']) for r in years_rows if r['y']]
-    if current_year not in available_years:
-        available_years.insert(0, current_year)
+    if current_year not in available_years: available_years.insert(0, current_year)
     
-    # 2. Stats for Selected Year
+    # 2. Year Specific Stats
     stats_query = """
         SELECT 
             COUNT(DISTINCT l.id) as books_read, 
-            SUM(l.hours_read) as total_hours,
-            SUM(b.total_pages) as total_pages
+            SUM(l.hours_read) as total_hours
         FROM reading_logs l
-        JOIN user_books ub ON l.user_book_id = ub.id
-        JOIN books b ON ub.book_id = b.id
         WHERE strftime('%Y', l.date_finished) = ? AND l.is_dnf = 0
     """
     stats = conn.execute(stats_query, (str(selected_year),)).fetchone()
     
-    # 3. On Deck (Unaffected by year)
+    # 3. Total Library Count (All Time)
+    # This replaces the "Total Pages" stat
+    library_count = conn.execute("SELECT COUNT(*) FROM user_books").fetchone()[0]
+    
+    # 4. On Deck
     on_deck = conn.execute("""
         SELECT ub.id, b.title, b.cover_url 
         FROM user_books ub 
@@ -70,7 +67,7 @@ async def dashboard(request: Request, year: int = None):
         LIMIT 5
     """).fetchall()
     
-    # 4. Recent Logs (Unaffected by year, shows latest activity)
+    # 5. Recent Logs
     recent = conn.execute("""
         SELECT b.title, l.date_finished, l.hours_read, l.is_dnf
         FROM reading_logs l
@@ -84,6 +81,7 @@ async def dashboard(request: Request, year: int = None):
     return templates.TemplateResponse("index.html", {
         "request": request, 
         "stats": stats, 
+        "total_books": library_count,
         "on_deck": on_deck, 
         "recent": recent,
         "selected_year": selected_year,

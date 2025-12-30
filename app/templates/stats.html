@@ -28,7 +28,7 @@
     </div>
 </div>
 
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
     
     <div class="bg-white p-4 rounded-lg shadow border border-gray-200">
         <h3 class="font-bold text-gray-700 mb-4 text-center">Books Finished per Month</h3>
@@ -39,14 +39,20 @@
         <h3 class="font-bold text-gray-700 mb-4 text-center">Hours Read per Month</h3>
         <canvas id="hoursChart"></canvas>
     </div>
+    
+    <div class="bg-white p-4 rounded-lg shadow border border-gray-200 lg:col-span-2">
+        <h3 class="font-bold text-gray-700 mb-4 text-center">Pages Read per Month</h3>
+        <div class="h-64">
+            <canvas id="pagesChart"></canvas>
+        </div>
+    </div>
 
 </div>
 
 <script>
-    // FIX: Use |tojson to safely convert Python lists to JS arrays
     const labels = {{ labels|tojson }};
     
-    // Books Chart
+    // Books
     new Chart(document.getElementById('booksChart'), {
         type: 'bar',
         data: {
@@ -61,7 +67,7 @@
         options: { scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
     });
 
-    // Hours Chart
+    // Hours
     new Chart(document.getElementById('hoursChart'), {
         type: 'bar',
         data: {
@@ -74,6 +80,25 @@
             }]
         },
         options: { scales: { y: { beginAtZero: true } } }
+    });
+
+    // Pages (New)
+    new Chart(document.getElementById('pagesChart'), {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Pages',
+                data: {{ data_pages|tojson }},
+                backgroundColor: '#10B981', // Emerald Green
+                borderRadius: 4
+            }]
+        },
+        options: { 
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: { y: { beginAtZero: true } } 
+        }
     });
 </script>
 {% endblock %}
