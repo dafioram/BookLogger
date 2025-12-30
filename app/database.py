@@ -19,7 +19,7 @@ def init_db():
     cursor.execute("PRAGMA journal_mode=WAL;")
     
     # 1. BOOKS (Reference)
-    # Added: cover_path (TEXT) for local image storage
+    # ADDED: subtitle, series_name, series_index, publisher, language
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS books (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -27,10 +27,15 @@ def init_db():
         isbn13 TEXT,
         goodreads_id TEXT,
         title TEXT NOT NULL,
+        subtitle TEXT,          -- NEW
         author TEXT,
+        series_name TEXT,       -- NEW
+        series_index REAL,      -- NEW (Float to support 1.5, etc.)
+        publisher TEXT,         -- NEW
         publication_year TEXT,
+        language TEXT DEFAULT 'en', -- NEW
         cover_url TEXT,
-        cover_path TEXT,  -- New Local Path Column
+        cover_path TEXT,
         total_pages INTEGER,
         summary TEXT,
         genres TEXT,
@@ -39,21 +44,25 @@ def init_db():
     ''')
     
     # 2. User Inventory
+    # ADDED: user_rating, acquired_source, acquired_date
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS user_books (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         book_id INTEGER NOT NULL,
-        read_status TEXT DEFAULT 'Unread',  -- Unread, Read, DNF
-        shelf_status TEXT DEFAULT 'Shelved', -- Shelved, On Deck
+        read_status TEXT DEFAULT 'Unread',
+        shelf_status TEXT DEFAULT 'Shelved',
+        user_rating REAL,       -- NEW (Your personal 1-5 star rating)
         is_owned BOOLEAN DEFAULT 0,
-        formats_owned TEXT, -- JSON list
+        formats_owned TEXT,
         inventory_notes TEXT,
+        acquired_source TEXT,   -- NEW (e.g., "Amazon", "Gift", "Used Bookstore")
+        acquired_date DATE,     -- NEW
         date_added DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(book_id) REFERENCES books(id)
     )
     ''')
     
-    # 3. Reading Logs
+    # 3. Reading Logs (Unchanged)
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS reading_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
