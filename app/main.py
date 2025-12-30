@@ -32,33 +32,26 @@ templates.env.filters["format_minutes"] = format_minutes
 # --- ROUTES ---
 
 @app.get("/", response_class=HTMLResponse)
-async def dashboard(request: Request, year: int = None):
+async def dashboard(request: Request):
     conn = get_db_connection()
     
-    # Default to current year
-    current_year = date.today().year
-    selected_year = year if year else current_year
+    # --- DASHBOARD: ALL TIME STATS ---
     
-    # 1. Get available years
-    years_rows = conn.execute("SELECT DISTINCT strftime('%Y', date_finished) as y FROM reading_logs WHERE date_finished IS NOT NULL ORDER BY y DESC").fetchall()
-    available_years = [int(r['y']) for r in years_rows if r['y']]
-    if current_year not in available_years: available_years.insert(0, current_year)
-    
-    # 2. Year Specific Stats
+    # 1. Lifetime Stats (Books Finished & Hours)
+    # Note: Removed the "WHERE strftime('%Y'...)" clause
     stats_query = """
         SELECT 
             COUNT(DISTINCT l.id) as books_read, 
             SUM(l.hours_read) as total_hours
         FROM reading_logs l
-        WHERE strftime('%Y', l.date_finished) = ? AND l.is_dnf = 0
+        WHERE l.is_dnf = 0
     """
-    stats = conn.execute(stats_query, (str(selected_year),)).fetchone()
+    stats = conn.execute(stats_query).fetchone()
     
-    # 3. Total Library Count (All Time)
-    # This replaces the "Total Pages" stat
+    # 2. Total Library Count (Inventory Size)
     library_count = conn.execute("SELECT COUNT(*) FROM user_books").fetchone()[0]
     
-    # 4. On Deck
+    # 3. On Deck
     on_deck = conn.execute("""
         SELECT ub.id, b.title, b.cover_url 
         FROM user_books ub 
@@ -67,7 +60,7 @@ async def dashboard(request: Request, year: int = None):
         LIMIT 5
     """).fetchall()
     
-    # 5. Recent Logs
+    # 4. Recent Logs
     recent = conn.execute("""
         SELECT b.title, l.date_finished, l.hours_read, l.is_dnf
         FROM reading_logs l
@@ -81,11 +74,9 @@ async def dashboard(request: Request, year: int = None):
     return templates.TemplateResponse("index.html", {
         "request": request, 
         "stats": stats, 
-        "total_books": library_count,
+        "total_books": library_count, 
         "on_deck": on_deck, 
-        "recent": recent,
-        "selected_year": selected_year,
-        "available_years": available_years
+        "recent": recent
     })
 
 @app.get("/stats", response_class=HTMLResponse)
