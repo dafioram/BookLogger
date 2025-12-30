@@ -416,6 +416,30 @@ async def delete_log(log_id: int):
     conn.close()
     return RedirectResponse(url="/", status_code=303)
 
+# --- BACKUP ROUTE ---
+@app.post("/system/backup", response_class=HTMLResponse)
+async def trigger_backup(request: Request):
+    # 1. Run the backup
+    result = backup_database() # Returns "Success: /path/to/file" or "Error: ..."
+    
+    # 2. Parse the result to look nicer
+    message = result
+    filename = ""
+    is_success = result.startswith("Success:")
+    
+    if is_success:
+        full_path = result.replace("Success: ", "")
+        filename = os.path.basename(full_path) # Just get "library_2025-..."
+        message = "Database successfully backed up."
+    
+    # 3. Show the success page
+    return templates.TemplateResponse("backup_result.html", {
+        "request": request, 
+        "is_success": is_success,
+        "message": message,
+        "filename": filename
+    })
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
