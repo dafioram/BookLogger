@@ -330,6 +330,38 @@ async def update_inventory(
 # ... [Keep add_log, edit_log, trigger_backup from previous versions] ...
 # (They don't need changes for this update)
 
+# --- NEW AUTHOR ROUTE ---
+@app.get("/author/{name}", response_class=HTMLResponse)
+async def author_page(request: Request, name: str):
+    conn = get_db_connection()
+    
+    # We use LIKE to find the author. 
+    # This handles exact matches perfectly.
+    query = """
+        SELECT ub.id, b.title, b.author, b.cover_url, ub.read_status, ub.shelf_status, ub.formats_owned, ub.is_owned
+        FROM user_books ub
+        JOIN books b ON ub.book_id = b.id
+        WHERE b.author LIKE ?
+        ORDER BY b.publication_year DESC
+    """
+    
+    # The % signs allow for flexibility if your data is messy
+    books = conn.execute(query, (f"%{name}%",)).fetchall()
+    conn.close()
+    
+    # Parse formats JSON for the template
+    books_data = []
+    for row in books:
+        r = dict(row)
+        r['formats'] = json.loads(r['formats_owned']) if r['formats_owned'] else []
+        books_data.append(r)
+
+    return templates.TemplateResponse("author.html", {
+        "request": request, 
+        "books": books_data, 
+        "author_name": name
+    })
+
 # Re-pasting add_log just for completeness so you don't miss it
 @app.post("/book/{id}/add_log")
 async def add_log(id: int, date_finished: str = Form(...), hours: float = Form(...), format_consumed: str = Form(...), pace: str = Form("Medium"), notes: str = Form(""), is_dnf: bool = Form(False)):

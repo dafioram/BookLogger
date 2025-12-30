@@ -7,8 +7,9 @@
         <img src="{{ book.cover_url }}" class="w-auto max-w-xs mx-auto rounded-lg shadow-lg">
         
         <div>
-            <h1 class="text-2xl font-bold leading-tight">{{ book.title }}</h1>
-            <p class="text-lg text-gray-600">{{ book.author }}</p>
+            <a href="/author/{{ book.author }}" class="text-lg text-blue-600 hover:text-blue-800 hover:underline transition">
+				{{ book.author }}
+			</a>
         </div>
 
         <div class="flex justify-center space-x-4 text-sm text-gray-500 border-t border-b py-3">
