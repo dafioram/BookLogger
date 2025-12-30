@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
+from starlette.exceptions import HTTPException as StarletteHTTPException
 import httpx
 import json
 import math
@@ -19,6 +20,11 @@ app = FastAPI(lifespan=lifespan)
 os.makedirs("app/static", exist_ok=True)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
+
+# --- CUSTOM ERROR HANDLERS ---
+@app.exception_handler(404)
+async def custom_404_handler(request: Request, exc: StarletteHTTPException):
+    return templates.TemplateResponse("404.html", {"request": request}, status_code=404)
 
 # --- UTILITIES ---
 def format_minutes(mins):
