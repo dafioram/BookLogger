@@ -29,7 +29,7 @@
 
             <div class="text-left mb-4">
                 <h3 class="font-bold text-slate-400 uppercase text-xs mb-1 ml-1">Synopsis</h3>
-                <div class="prose max-w-none text-slate-700 text-base leading-relaxed bg-slate-50 p-6 rounded-lg border border-slate-200 shadow-inner max-h-60 overflow-y-auto">
+                <div class="prose max-w-none text-slate-700 text-base leading-relaxed bg-slate-50 p-6 rounded-lg border border-slate-200 shadow-inner max-h-48 overflow-y-auto">
                     {{ book.summary | safe }}
                 </div>
             </div>
@@ -152,6 +152,13 @@
                         </select>
                     </div>
 
+                    <div class="md:col-span-4">
+                         <label class="flex items-center space-x-2 cursor-pointer bg-blue-100 p-2 rounded border border-blue-200">
+                            <input type="checkbox" name="is_borrowed" value="true" class="rounded text-blue-600 focus:ring-blue-500">
+                            <span class="text-xs font-bold text-blue-900">This was a Borrowed Copy (Libby/Library)</span>
+                        </label>
+                    </div>
+
                      <div class="md:col-span-4">
                         <label class="block text-xs font-bold text-blue-800 uppercase mb-1">Session Notes (Optional)</label>
                         <input type="text" name="notes" class="w-full border border-blue-200 rounded px-2 py-1 text-sm" placeholder="What happened in this session?">
@@ -175,10 +182,14 @@
                 {% for log in logs %}
                 <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200 flex flex-col md:flex-row md:items-center justify-between group">
                     <div>
-                        <div class="text-sm font-bold text-slate-800">
-                            {{ log.date_finished }} 
-                            <span class="mx-2 text-gray-300">|</span> 
-                            {{ log.format_consumed }}
+                        <div class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                            <span>{{ log.date_finished }}</span>
+                            <span class="text-gray-300">|</span> 
+                            <span>{{ log.format_consumed }}</span>
+                            
+                            {% if log.is_borrowed %}
+                                <span class="bg-orange-100 text-orange-800 text-[10px] px-2 py-0.5 rounded-full border border-orange-200 uppercase tracking-wide">Borrowed</span>
+                            {% endif %}
                         </div>
                         {% if log.log_notes %}
                         <p class="text-gray-600 text-sm mt-1 italic">"{{ log.log_notes }}"</p>

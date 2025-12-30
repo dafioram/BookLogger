@@ -62,7 +62,7 @@ def init_db():
     )
     ''')
     
-    # 3. Reading Logs (Unchanged)
+    # 3. Reading Logs
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS reading_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,6 +71,7 @@ def init_db():
         date_finished DATE,
         hours_read REAL,
         pace TEXT,
+        is_borrowed BOOLEAN DEFAULT 0,  -- NEW COLUMN
         is_dnf BOOLEAN DEFAULT 0,
         log_notes TEXT,
         FOREIGN KEY(user_book_id) REFERENCES user_books(id)

@@ -363,15 +363,20 @@ async def update_inventory(
 
 @app.post("/book/{id}/add_log")
 async def add_log(
-    id: int, date_finished: str = Form(...), hours: float = Form(...), 
-    format_consumed: str = Form(...), pace: str = Form("Medium"), 
-    notes: str = Form(""), is_dnf: bool = Form(False)
+    id: int, 
+    date_finished: str = Form(...), 
+    hours: float = Form(...), 
+    format_consumed: str = Form(...), 
+    pace: str = Form("Medium"), 
+    notes: str = Form(""), 
+    is_dnf: bool = Form(False),
+    is_borrowed: bool = Form(False) # NEW PARAMETER
 ):
     conn = get_db_connection()
     conn.execute("""
-        INSERT INTO reading_logs (user_book_id, date_finished, hours_read, format_consumed, pace, log_notes, is_dnf)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (id, date_finished, hours, format_consumed, pace, notes, is_dnf))
+        INSERT INTO reading_logs (user_book_id, date_finished, hours_read, format_consumed, pace, log_notes, is_dnf, is_borrowed)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (id, date_finished, hours, format_consumed, pace, notes, is_dnf, is_borrowed))
     
     if not is_dnf:
         conn.execute("UPDATE user_books SET read_status = 'Read' WHERE id = ?", (id,))
@@ -418,16 +423,21 @@ async def edit_log_page(request: Request, log_id: int):
 
 @app.post("/log/{log_id}/edit")
 async def update_log(
-    log_id: int, date_finished: str = Form(...), hours: float = Form(...), 
-    format_consumed: str = Form(...), pace: str = Form("Medium"), 
-    notes: str = Form(""), is_dnf: bool = Form(False)
+    log_id: int, 
+    date_finished: str = Form(...), 
+    hours: float = Form(...), 
+    format_consumed: str = Form(...), 
+    pace: str = Form("Medium"), 
+    notes: str = Form(""), 
+    is_dnf: bool = Form(False),
+    is_borrowed: bool = Form(False) # NEW PARAMETER
 ):
     conn = get_db_connection()
     conn.execute("""
         UPDATE reading_logs 
-        SET date_finished = ?, hours_read = ?, format_consumed = ?, pace = ?, log_notes = ?, is_dnf = ? 
+        SET date_finished = ?, hours_read = ?, format_consumed = ?, pace = ?, log_notes = ?, is_dnf = ?, is_borrowed = ? 
         WHERE id = ?
-    """, (date_finished, hours, format_consumed, pace, notes, is_dnf, log_id))
+    """, (date_finished, hours, format_consumed, pace, notes, is_dnf, is_borrowed, log_id))
     
     row = conn.execute("SELECT user_book_id FROM reading_logs WHERE id = ?", (log_id,)).fetchone()
     conn.commit()
