@@ -44,10 +44,7 @@ async def favicon():
 async def dashboard(request: Request):
     conn = get_db_connection()
     
-    # --- DASHBOARD: ALL TIME STATS ---
-    
-    # 1. Lifetime Stats (Books Finished & Hours)
-    # Note: Removed the "WHERE strftime('%Y'...)" clause
+    # 1. Lifetime Stats
     stats_query = """
         SELECT 
             COUNT(DISTINCT l.id) as books_read, 
@@ -57,10 +54,10 @@ async def dashboard(request: Request):
     """
     stats = conn.execute(stats_query).fetchone()
     
-    # 2. Total Library Count (Inventory Size)
+    # 2. Total Library Count
     library_count = conn.execute("SELECT COUNT(*) FROM user_books").fetchone()[0]
     
-    # 3. On Deck
+    # 3. On Deck (List + Count)
     on_deck = conn.execute("""
         SELECT ub.id, b.title, b.cover_url 
         FROM user_books ub 
@@ -69,6 +66,9 @@ async def dashboard(request: Request):
         LIMIT 5
     """).fetchall()
     
+    # NEW: Count total items in "On Deck"
+    on_deck_count = conn.execute("SELECT COUNT(*) FROM user_books WHERE shelf_status = 'On Deck'").fetchone()[0]
+    
     # 4. Recent Logs
     recent = conn.execute("""
         SELECT b.title, l.date_finished, l.hours_read, l.is_dnf
@@ -76,7 +76,7 @@ async def dashboard(request: Request):
         JOIN user_books ub ON l.user_book_id = ub.id
         JOIN books b ON ub.book_id = b.id
         ORDER BY l.date_finished DESC
-        LIMIT 5
+        LIMIT 10
     """).fetchall()
     
     conn.close()
@@ -85,6 +85,7 @@ async def dashboard(request: Request):
         "stats": stats, 
         "total_books": library_count, 
         "on_deck": on_deck, 
+        "on_deck_count": on_deck_count, # Pass count to template
         "recent": recent
     })
 
