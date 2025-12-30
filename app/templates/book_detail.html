@@ -42,6 +42,14 @@
             {{ book.summary|safe }} 
         </div>
         {% endif %}
+
+        <div class="pt-6 border-t mt-6">
+            <form action="/book/{{ book.id }}/delete" method="post" onsubmit="return confirm('⚠️ DANGER: Are you sure? This will delete the book and ALL its reading logs forever.');">
+                <button type="submit" class="text-red-600 text-sm font-bold hover:text-red-800 border border-red-200 px-4 py-2 rounded bg-red-50 w-full transition hover:bg-red-100">
+                    🗑️ Delete Book from Library
+                </button>
+            </form>
+        </div>
     </div>
 
     <div class="md:col-span-2 space-y-8">
@@ -82,17 +90,24 @@
                 </div>
 
                 <div>
-                    <span class="block text-xs font-bold text-gray-500 uppercase mb-1">Formats Owned</span>
+                    <span class="block text-xs font-bold text-gray-500 uppercase mb-2">My Owned Copies</span>
+                    <div class="flex space-x-4 mb-2">
+                        <label class="flex items-center select-none"><input type="checkbox" name="physical" class="mr-2" {% if 'Physical' in formats_owned %}checked{% endif %}> Physical</label>
+                        <label class="flex items-center select-none"><input type="checkbox" name="kindle" class="mr-2" {% if 'Kindle' in formats_owned %}checked{% endif %}> Kindle</label>
+                        <label class="flex items-center select-none"><input type="checkbox" name="audible" class="mr-2" {% if 'Audible' in formats_owned %}checked{% endif %}> Audible</label>
+                    </div>
+                    
+                    <span class="block text-xs font-bold text-gray-500 uppercase mb-2 mt-4">Libby / Borrowed</span>
                     <div class="flex space-x-4">
-                        <label class="flex items-center"><input type="checkbox" name="physical" class="mr-2" {% if 'Physical' in formats_owned %}checked{% endif %}> Physical</label>
-                        <label class="flex items-center"><input type="checkbox" name="kindle" class="mr-2" {% if 'Kindle' in formats_owned %}checked{% endif %}> Kindle</label>
-                        <label class="flex items-center"><input type="checkbox" name="audible" class="mr-2" {% if 'Audible' in formats_owned %}checked{% endif %}> Audible</label>
+                        <label class="flex items-center select-none"><input type="checkbox" name="libby_audio" class="mr-2" {% if 'Libby Audiobook' in formats_owned %}checked{% endif %}> Audiobook</label>
+                        <label class="flex items-center select-none"><input type="checkbox" name="libby_ebook" class="mr-2" {% if 'Libby eBook' in formats_owned %}checked{% endif %}> eBook</label>
+                        <label class="flex items-center select-none"><input type="checkbox" name="libby_physical" class="mr-2" {% if 'Libby Physical' in formats_owned %}checked{% endif %}> Physical</label>
                     </div>
                 </div>
 
                 <div>
                     <span class="block text-xs font-bold text-gray-500 uppercase mb-1">Inventory Notes</span>
-                    <input type="text" name="inventory_notes" value="{{ book.inventory_notes or '' }}" class="w-full border rounded p-2 text-sm">
+                    <input type="text" name="inventory_notes" value="{{ book.inventory_notes or '' }}" class="w-full border rounded p-2 text-sm focus:ring-2 focus:ring-slate-200 outline-none">
                 </div>
                 
                 <button type="submit" class="w-full bg-slate-800 text-white py-2 rounded font-bold hover:bg-slate-700 transition">
@@ -104,7 +119,7 @@
         <div class="bg-gray-50 p-6 rounded-lg border border-gray-200">
             <h2 class="text-lg font-bold mb-4">Reading History</h2>
             
-			{% for log in logs %}
+            {% for log in logs %}
             <div class="bg-white p-4 rounded shadow-sm mb-3 {% if log.is_dnf %}border-l-4 border-red-400{% else %}border-l-4 border-green-400{% endif %}">
                 
                 <div class="flex justify-between items-start">
@@ -142,32 +157,33 @@
             {% endfor %}
 
             <details class="mt-4">
-                <summary class="cursor-pointer text-blue-600 font-semibold">+ Log a Session</summary>
-                <form action="/book/{{ book.id }}/add_log" method="post" class="mt-4 space-y-3 bg-white p-4 rounded border">
+                <summary class="cursor-pointer text-blue-600 font-semibold select-none hover:text-blue-800">+ Log a Session</summary>
+                
+                <form action="/book/{{ book.id }}/add_log" method="post" class="mt-4 space-y-3 bg-white p-4 rounded border shadow-sm">
                     <div class="grid grid-cols-2 gap-4">
-                        <label class="block text-sm">
+                        <label class="block text-sm font-semibold">
                             Date Finished
-                            <input type="date" name="date_finished" required class="w-full border rounded p-1">
+                            <input type="date" name="date_finished" required class="w-full border rounded p-1 mt-1">
                         </label>
-                        <label class="block text-sm">
+                        <label class="block text-sm font-semibold">
                             Hours Read
-                            <input type="number" step="0.1" name="hours" required class="w-full border rounded p-1">
+                            <input type="number" step="0.1" name="hours" required class="w-full border rounded p-1 mt-1">
                         </label>
                     </div>
                     
                     <div class="grid grid-cols-2 gap-4">
-                        <label class="block text-sm">
+                        <label class="block text-sm font-semibold">
                             Format Used
-                            <select name="format_consumed" class="w-full border rounded p-1">
+                            <select name="format_consumed" class="w-full border rounded p-1 mt-1 bg-white">
                                 <option>Physical</option>
                                 <option>Kindle</option>
                                 <option>Audible</option>
                                 <option>Libby</option>
                             </select>
                         </label>
-                        <label class="block text-sm">
+                        <label class="block text-sm font-semibold">
                             Pace
-                            <select name="pace" class="w-full border rounded p-1">
+                            <select name="pace" class="w-full border rounded p-1 mt-1 bg-white">
                                 <option>Slow</option>
                                 <option selected>Medium</option>
                                 <option>Fast</option>
@@ -175,9 +191,9 @@
                         </label>
                     </div>
 
-                    <label class="block text-sm">
+                    <label class="block text-sm font-semibold">
                         Notes
-                        <textarea name="notes" class="w-full border rounded p-1"></textarea>
+                        <textarea name="notes" class="w-full border rounded p-1 mt-1" rows="2"></textarea>
                     </label>
 
                     <div class="bg-red-50 p-2 rounded border border-red-100">
@@ -187,7 +203,7 @@
                         </label>
                     </div>
 
-                    <button type="submit" class="w-full bg-slate-800 text-white py-2 rounded font-bold hover:bg-slate-700">Save Log</button>
+                    <button type="submit" class="w-full bg-slate-800 text-white py-2 rounded font-bold hover:bg-slate-700 transition">Save Log</button>
                 </form>
             </details>
         </div>

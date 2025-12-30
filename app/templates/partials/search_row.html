@@ -15,15 +15,15 @@
     
     <form hx-post="/api/add_book" hx-swap="outerHTML">
         <input type="hidden" name="google_id" value="{{ r.google_id }}">
-        <input type="hidden" name="title" value="{{ r.title }}">
-        <input type="hidden" name="author" value="{{ r.author }}">
-        <input type="hidden" name="cover" value="{{ r.cover }}">
-        <input type="hidden" name="pages" value="{{ r.pages }}">
-		<input type="hidden" name="year" value="{{ r.year }}">
-        
-        <input type="hidden" name="summary" value="{{ r.summary }}">
-        <input type="hidden" name="genres" value="{{ r.genres }}">
-        <input type="hidden" name="rating" value="{{ r.rating }}">
+        <input type="hidden" name="title"     value="{{ r.title }}">
+        <input type="hidden" name="author"    value="{{ r.author }}">
+        <input type="hidden" name="cover"     value="{{ r.cover }}">
+        <input type="hidden" name="pages"     value="{{ r.pages }}">
+		<input type="hidden" name="year"      value="{{ r.year }}">
+        <input type="hidden" name="isbn13"    value="{{ r.isbn13 }}">
+        <input type="hidden" name="summary"   value="{{ r.summary }}">
+        <input type="hidden" name="genres"    value="{{ r.genres }}">
+        <input type="hidden" name="rating"    value="{{ r.rating }}">
         
         <button type="submit" class="bg-slate-800 text-white px-4 py-2 rounded text-sm hover:bg-slate-700 transition">
             + Add

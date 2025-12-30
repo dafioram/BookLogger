@@ -3,9 +3,10 @@
 {% block content %}
 <div class="flex justify-between items-center mb-6">
     <h1 class="text-2xl font-bold">My Library</h1>
+    
     <form class="flex" method="get">
-        <input type="text" name="q" value="{{ query }}" placeholder="Filter..." class="border rounded-l px-3 py-2">
-        <button type="submit" class="bg-gray-200 px-4 py-2 rounded-r hover:bg-gray-300">Filter</button>
+        <input type="text" name="q" value="{{ query }}" placeholder="Filter titles..." class="border border-gray-300 rounded-l px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-48 md:w-64">
+        <button type="submit" class="bg-gray-200 text-gray-700 px-4 py-2 rounded-r hover:bg-gray-300 text-sm font-bold border border-l-0 border-gray-300">Filter</button>
     </form>
 </div>
 
@@ -17,26 +18,31 @@
             
             <div class="absolute bottom-1 right-1 flex space-x-1">
                 {% if 'Physical' in book.formats %}
-                    <span class="bg-gray-900 text-white text-[10px] px-1 rounded opacity-80">📖</span>
+                    <span class="bg-gray-900 text-white text-[10px] px-1 rounded opacity-80 shadow-sm">📖</span>
                 {% endif %}
                 {% if 'Audible' in book.formats %}
-                    <span class="bg-orange-500 text-white text-[10px] px-1 rounded opacity-80">🎧</span>
+                    <span class="bg-orange-500 text-white text-[10px] px-1 rounded opacity-80 shadow-sm">🎧</span>
+                {% endif %}
+                {% if 'Kindle' in book.formats %}
+                    <span class="bg-blue-800 text-white text-[10px] px-1 rounded opacity-80 shadow-sm">📱</span>
                 {% endif %}
             </div>
 
             <div class="absolute top-1 right-1 flex flex-col items-end space-y-1">
-                
                 {% if book.shelf_status == 'On Deck' %}
-                    <span class="bg-blue-500 text-white text-xs px-1 rounded shadow border border-blue-600">Next</span>
+                    <span class="bg-blue-500 text-white text-xs px-1 rounded shadow border border-blue-600 font-bold">Next</span>
                 {% endif %}
 
                 {% if book.read_status == 'Read' %}
-                    <span class="bg-green-500 text-white text-xs px-1 rounded shadow border border-green-600">✓</span>
+                    <span class="bg-green-500 text-white text-xs px-1 rounded shadow border border-green-600 font-bold">✓</span>
                 {% elif book.read_status == 'DNF' %}
-                    <span class="bg-red-500 text-white text-xs px-1 rounded shadow border border-red-600">DNF</span>
+                    <span class="bg-red-500 text-white text-xs px-1 rounded shadow border border-red-600 font-bold">DNF</span>
                 {% endif %}
-                
             </div>
+            
+			{% if not book.is_owned and ('Libby Audiobook' in book.formats or 'Libby eBook' in book.formats or 'Libby Physical' in book.formats) %}
+                 <span class="absolute top-1 left-1 bg-yellow-400 text-yellow-900 text-[10px] px-1 rounded shadow font-bold border border-yellow-500">LIBBY</span>
+            {% endif %}
         </div>
         <h3 class="font-bold text-sm leading-tight group-hover:text-blue-600">{{ book.title }}</h3>
         <p class="text-xs text-gray-500">{{ book.author }}</p>
