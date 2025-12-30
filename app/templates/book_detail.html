@@ -5,36 +5,21 @@
     
     <div class="flex flex-col md:flex-row gap-10 mb-10">
         
-        <div class="flex-shrink-0 mx-auto md:mx-0 flex flex-col items-center md:items-start w-72">
-            <img src="{{ book.cover_url }}" class="w-full rounded-lg shadow-xl mb-4">
-            
-            <div class="w-full text-center text-xs text-slate-500 font-bold uppercase tracking-wider space-y-2 border-t pt-4">
-                <div class="flex justify-between border-b pb-1">
-                    <span>Year</span>
-                    <span class="text-slate-800">{{ book.publication_year }}</span>
-                </div>
-                <div class="flex justify-between border-b pb-1">
-                    <span>Pages</span>
-                    <span class="text-slate-800">{{ book.total_pages }}</span>
-                </div>
-                <div class="text-center pt-1 leading-tight">
-                    {{ book.genres }}
-                </div>
-            </div>
+        <div class="flex-shrink-0 mx-auto md:mx-0">
+            <img src="{{ book.cover_url }}" class="w-72 rounded-lg shadow-xl">
         </div>
 
-        <div class="flex-grow text-center md:text-left">
+        <div class="flex-grow text-center md:text-left flex flex-col">
             <h1 class="text-5xl font-bold text-slate-900 mb-2 leading-tight">{{ book.title }}</h1>
             <a href="/author/{{ book.author }}" class="text-2xl text-blue-600 hover:text-blue-800 hover:underline transition mb-6 block">
                 {{ book.author }}
             </a>
             
-            <div class="flex justify-center md:justify-start space-x-4 mb-8">
+            <div class="flex justify-center md:justify-start space-x-4 mb-6">
                 <div class="bg-white px-4 py-2 rounded shadow-sm border border-gray-200 text-sm text-gray-600 flex items-center">
                     <span class="mr-2 text-lg">🌍</span> 
                     Google: <strong class="ml-1 text-slate-800">{{ book.average_rating or 'N/A' }}</strong>/5
                 </div>
-                
                 <div class="px-4 py-2 rounded shadow-sm border text-sm flex items-center
                     {% if book.user_rating %}bg-yellow-50 border-yellow-200 text-yellow-800{% else %}bg-gray-50 border-gray-200 text-gray-400{% endif %}">
                     <span class="mr-2 text-lg">⭐</span>
@@ -42,11 +27,17 @@
                 </div>
             </div>
 
-            <div class="text-left">
+            <div class="text-left mb-4">
                 <h3 class="font-bold text-slate-400 uppercase text-xs mb-1 ml-1">Synopsis</h3>
-                <div class="prose max-w-none text-slate-700 text-base leading-relaxed bg-slate-50 p-6 rounded-lg border border-slate-200 shadow-inner max-h-80 overflow-y-auto">
+                <div class="prose max-w-none text-slate-700 text-base leading-relaxed bg-slate-50 p-6 rounded-lg border border-slate-200 shadow-inner max-h-60 overflow-y-auto">
                     {{ book.summary | safe }}
                 </div>
+            </div>
+
+            <div class="mt-auto pt-4 border-t border-gray-100 flex flex-wrap gap-6 text-sm text-slate-500 font-bold uppercase tracking-wider justify-center md:justify-start">
+                <span class="flex items-center"><span class="text-slate-400 mr-2">Year:</span> {{ book.publication_year }}</span>
+                <span class="flex items-center"><span class="text-slate-400 mr-2">Length:</span> {{ book.total_pages }} Pages</span>
+                <span class="flex items-center"><span class="text-slate-400 mr-2">Genre:</span> {{ book.genres }}</span>
             </div>
         </div>
     </div>
