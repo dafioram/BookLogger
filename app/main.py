@@ -107,6 +107,62 @@ async def library(request: Request, q: str = ""):
 
     return templates.TemplateResponse("library.html", {"request": request, "books": books_data, "query": q})
 
+# --- LOG MANAGEMENT ROUTES ---
+
+@app.get("/log/{log_id}/edit", response_class=HTMLResponse)
+async def edit_log_page(request: Request, log_id: int):
+    conn = get_db_connection()
+    log = conn.execute("SELECT * FROM reading_logs WHERE id = ?", (log_id,)).fetchone()
+    conn.close()
+    
+    if not log:
+        raise HTTPException(status_code=404, detail="Log not found")
+        
+    return templates.TemplateResponse("edit_log.html", {"request": request, "log": log})
+
+@app.post("/log/{log_id}/edit")
+async def update_log(
+    log_id: int,
+    date_finished: str = Form(...),
+    hours: float = Form(...),
+    format_consumed: str = Form(...),
+    pace: str = Form("Medium"),
+    notes: str = Form(""),
+    is_dnf: bool = Form(False)
+):
+    conn = get_db_connection()
+    
+    # Update the log entry
+    conn.execute("""
+        UPDATE reading_logs 
+        SET date_finished = ?, hours_read = ?, format_consumed = ?, pace = ?, log_notes = ?, is_dnf = ?
+        WHERE id = ?
+    """, (date_finished, hours, format_consumed, pace, notes, is_dnf, log_id))
+    
+    # Get book_id to redirect back
+    row = conn.execute("SELECT user_book_id FROM reading_logs WHERE id = ?", (log_id,)).fetchone()
+    conn.commit()
+    conn.close()
+    
+    return RedirectResponse(url=f"/book/{row['user_book_id']}", status_code=303)
+
+@app.post("/log/{log_id}/delete")
+async def delete_log(log_id: int):
+    conn = get_db_connection()
+    
+    # Get book_id BEFORE deleting so we know where to go back to
+    row = conn.execute("SELECT user_book_id FROM reading_logs WHERE id = ?", (log_id,)).fetchone()
+    
+    if row:
+        book_id = row['user_book_id']
+        conn.execute("DELETE FROM reading_logs WHERE id = ?", (log_id,))
+        conn.commit()
+        conn.close()
+        return RedirectResponse(url=f"/book/{book_id}", status_code=303)
+    
+    conn.close()
+    return RedirectResponse(url="/", status_code=303)
+
 @app.get("/search", response_class=HTMLResponse)
 async def search_page(request: Request):
     return templates.TemplateResponse("search.html", {"request": request})

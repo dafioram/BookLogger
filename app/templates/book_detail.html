@@ -104,12 +104,28 @@
         <div class="bg-gray-50 p-6 rounded-lg border border-gray-200">
             <h2 class="text-lg font-bold mb-4">Reading History</h2>
             
-            {% for log in logs %}
+			{% for log in logs %}
             <div class="bg-white p-4 rounded shadow-sm mb-3 {% if log.is_dnf %}border-l-4 border-red-400{% else %}border-l-4 border-green-400{% endif %}">
-                <div class="flex justify-between">
-                    <span class="font-bold">{{ log.date_finished }}</span>
-                    <span class="text-sm bg-gray-100 px-2 py-0.5 rounded">{{ log.format_consumed }}</span>
+                
+                <div class="flex justify-between items-start">
+                    <div>
+                        <span class="font-bold text-gray-800">{{ log.date_finished }}</span>
+                        <span class="ml-2 text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-600 border">{{ log.format_consumed }}</span>
+                    </div>
+
+                    <div class="flex items-center space-x-2">
+                        <a href="/log/{{ log.id }}/edit" class="text-xs text-blue-600 hover:text-blue-800 font-bold">Edit</a>
+                        
+                        <span class="text-gray-300 text-xs">|</span>
+                        
+                        <form action="/log/{{ log.id }}/delete" method="post" onsubmit="return confirm('Delete this log?');">
+                            <button type="submit" class="text-xs text-red-500 hover:text-red-700 font-bold">
+                                Delete
+                            </button>
+                        </form>
+                    </div>
                 </div>
+
                 <div class="mt-2 text-sm">
                     <span class="font-semibold">{{ log.hours_read }} hours</span> 
                     <span class="text-gray-500 mx-2">•</span> 
@@ -118,6 +134,7 @@
                     <span class="ml-2 text-red-600 font-bold uppercase text-xs border border-red-200 px-1 rounded">DNF</span>
                     {% endif %}
                 </div>
+                
                 {% if log.log_notes %}
                 <p class="mt-2 text-gray-600 italic text-sm">"{{ log.log_notes }}"</p>
                 {% endif %}
