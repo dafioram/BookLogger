@@ -1,47 +1,57 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto">
+<div class="max-w-6xl mx-auto">
     
-    <div class="flex flex-col md:flex-row gap-8 mb-10">
-        <div class="flex-shrink-0 mx-auto md:mx-0">
-            <img src="{{ book.cover_url }}" class="w-48 rounded-lg shadow-lg">
+    <div class="flex flex-col md:flex-row gap-10 mb-10">
+        
+        <div class="flex-shrink-0 mx-auto md:mx-0 flex flex-col items-center md:items-start w-72">
+            <img src="{{ book.cover_url }}" class="w-full rounded-lg shadow-xl mb-4">
+            
+            <div class="w-full text-center text-xs text-slate-500 font-bold uppercase tracking-wider space-y-2 border-t pt-4">
+                <div class="flex justify-between border-b pb-1">
+                    <span>Year</span>
+                    <span class="text-slate-800">{{ book.publication_year }}</span>
+                </div>
+                <div class="flex justify-between border-b pb-1">
+                    <span>Pages</span>
+                    <span class="text-slate-800">{{ book.total_pages }}</span>
+                </div>
+                <div class="text-center pt-1 leading-tight">
+                    {{ book.genres }}
+                </div>
+            </div>
         </div>
 
         <div class="flex-grow text-center md:text-left">
-            <h1 class="text-4xl font-bold text-slate-800 mb-2">{{ book.title }}</h1>
-            <a href="/author/{{ book.author }}" class="text-xl text-blue-600 hover:text-blue-800 hover:underline transition mb-4 block">
+            <h1 class="text-5xl font-bold text-slate-900 mb-2 leading-tight">{{ book.title }}</h1>
+            <a href="/author/{{ book.author }}" class="text-2xl text-blue-600 hover:text-blue-800 hover:underline transition mb-6 block">
                 {{ book.author }}
             </a>
             
-            <div class="flex justify-center md:justify-start space-x-4 mb-6">
-                <div class="bg-gray-100 px-3 py-1 rounded border border-gray-200 text-sm text-gray-600 flex items-center">
-                    <span class="mr-1">🌍</span> 
+            <div class="flex justify-center md:justify-start space-x-4 mb-8">
+                <div class="bg-white px-4 py-2 rounded shadow-sm border border-gray-200 text-sm text-gray-600 flex items-center">
+                    <span class="mr-2 text-lg">🌍</span> 
                     Google: <strong class="ml-1 text-slate-800">{{ book.average_rating or 'N/A' }}</strong>/5
                 </div>
                 
-                <div class="px-3 py-1 rounded border text-sm flex items-center
-                    {% if book.user_rating %}bg-yellow-50 border-yellow-200 text-yellow-700{% else %}bg-gray-50 border-gray-200 text-gray-400{% endif %}">
-                    <span class="mr-1">⭐</span>
-                    My Rating: <strong class="ml-1 text-slate-800">{{ book.user_rating or '-' }}</strong>/5
+                <div class="px-4 py-2 rounded shadow-sm border text-sm flex items-center
+                    {% if book.user_rating %}bg-yellow-50 border-yellow-200 text-yellow-800{% else %}bg-gray-50 border-gray-200 text-gray-400{% endif %}">
+                    <span class="mr-2 text-lg">⭐</span>
+                    My Rating: <strong class="ml-1 text-slate-800 text-lg">{{ book.user_rating or '-' }}</strong>/5
                 </div>
             </div>
 
-            <div class="prose max-w-none text-gray-600 text-sm">
-                {{ book.summary | safe }}
-            </div>
-            
-            <div class="mt-6 text-xs text-gray-400 flex flex-wrap gap-4 justify-center md:justify-start uppercase tracking-wider font-bold">
-                <span>{{ book.publication_year }}</span>
-                <span>•</span>
-                <span>{{ book.total_pages }} Pages</span>
-                <span>•</span>
-                <span>{{ book.genres }}</span>
+            <div class="text-left">
+                <h3 class="font-bold text-slate-400 uppercase text-xs mb-1 ml-1">Synopsis</h3>
+                <div class="prose max-w-none text-slate-700 text-base leading-relaxed bg-slate-50 p-6 rounded-lg border border-slate-200 shadow-inner max-h-80 overflow-y-auto">
+                    {{ book.summary | safe }}
+                </div>
             </div>
         </div>
     </div>
 
-    <hr class="border-gray-200 my-8">
+    <hr class="border-gray-200 my-10">
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
         
