@@ -315,6 +315,7 @@ async def update_inventory(
     id: int, 
     shelf_status: str = Form(...),
     inventory_notes: str = Form(""),
+    user_rating: float = Form(None), # NEW FIELD
     # Standard
     physical: str = Form(None),
     kindle: str = Form(None),
@@ -347,11 +348,14 @@ async def update_inventory(
     is_owned = True if owned_formats > 0 else False
     
     conn = get_db_connection()
+    
+    # UPDATED SQL: Added user_rating = ?
     conn.execute("""
         UPDATE user_books 
-        SET shelf_status = ?, inventory_notes = ?, formats_owned = ?, is_owned = ?
+        SET shelf_status = ?, inventory_notes = ?, formats_owned = ?, is_owned = ?, user_rating = ?
         WHERE id = ?
-    """, (shelf_status, inventory_notes, json.dumps(formats), is_owned, id))
+    """, (shelf_status, inventory_notes, json.dumps(formats), is_owned, user_rating, id))
+    
     conn.commit()
     conn.close()
     
