@@ -115,7 +115,7 @@ async def stats_page(request: Request, year: int = None):
     current_year = date.today().year
     selected_year = year if year else current_year
     
-    # Get available years
+    # 1. Get available years
     years_rows = conn.execute("""
         SELECT DISTINCT strftime('%Y', date_finished) as y 
         FROM reading_logs WHERE date_finished IS NOT NULL ORDER BY y DESC
@@ -123,7 +123,7 @@ async def stats_page(request: Request, year: int = None):
     available_years = [int(r['y']) for r in years_rows if r['y']]
     if current_year not in available_years: available_years.insert(0, current_year)
     
-    # Monthly Data Query
+    # 2. Monthly Data (Bar Chart)
     monthly_query = """
         SELECT 
             strftime('%m', l.date_finished) as month,
@@ -138,29 +138,74 @@ async def stats_page(request: Request, year: int = None):
         ORDER BY month
     """
     rows = conn.execute(monthly_query, (str(selected_year),)).fetchall()
-    conn.close()
     
-    # Initialize 12 months of zero data
+    # Initialize zero data
     labels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
     data_books = [0] * 12
     data_hours = [0] * 12
     data_pages = [0] * 12
     
-    # Fill in the actual data
     for r in rows:
         idx = int(r['month']) - 1
         data_books[idx] = r['books']
         data_hours[idx] = round(r['hours'], 1)
         data_pages[idx] = r['pages']
-        
+
+    # 3. Format Breakdown (Pie Chart) -- NEW
+    format_data = conn.execute("""
+        SELECT format_consumed, COUNT(*) as count
+        FROM reading_logs
+        WHERE strftime('%Y', date_finished) = ?
+        GROUP BY format_consumed
+    """, (str(selected_year),)).fetchall()
+    
+    format_labels = [row['format_consumed'] for row in format_data]
+    format_counts = [row['count'] for row in format_data]
+
+    # 4. Chronological Log List -- NEW
+    logs_rows = conn.execute("""
+        SELECT 
+            b.id as book_id,
+            b.title, 
+            b.author, 
+            b.cover_url, 
+            b.cover_path,
+            ub.user_rating,
+            rl.date_finished, 
+            rl.format_consumed, 
+            rl.is_borrowed,
+            rl.hours_read
+        FROM reading_logs rl
+        JOIN user_books ub ON rl.user_book_id = ub.id
+        JOIN books b ON ub.book_id = b.id
+        WHERE strftime('%Y', rl.date_finished) = ?
+        ORDER BY rl.date_finished ASC
+    """, (str(selected_year),)).fetchall()
+    
+    # Process logs to swap cover_url if local path exists
+    logs = []
+    for row in logs_rows:
+        r = dict(row)
+        if r.get('cover_path'):
+            r['cover_url'] = r['cover_path']
+        logs.append(r)
+
+    conn.close()
+    
     return templates.TemplateResponse("stats.html", {
         "request": request,
         "selected_year": selected_year,
         "available_years": available_years,
-        "labels": labels,         # Raw List
-        "data_books": data_books, # Raw List
-        "data_hours": data_hours, # Raw List
-        "data_pages": data_pages  # Raw List
+        # Bar Chart
+        "labels": labels,         
+        "data_books": data_books, 
+        "data_hours": data_hours, 
+        "data_pages": data_pages,
+        # Pie Chart
+        "format_labels": format_labels,
+        "format_counts": format_counts,
+        # List
+        "logs": logs
     })
 
 @app.get("/library", response_class=HTMLResponse)
