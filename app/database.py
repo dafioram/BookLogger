@@ -25,15 +25,17 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         google_id TEXT UNIQUE,
         isbn13 TEXT,
+        asin TEXT,              -- NEW: Amazon ID
+        olid TEXT,              -- NEW: Open Library ID
         goodreads_id TEXT,
         title TEXT NOT NULL,
-        subtitle TEXT,          -- NEW
+        subtitle TEXT,
         author TEXT,
-        series_name TEXT,       -- NEW
-        series_index REAL,      -- NEW (Float to support 1.5, etc.)
-        publisher TEXT,         -- NEW
+        series_name TEXT,
+        series_index REAL,
+        publisher TEXT,
         publication_year TEXT,
-        language TEXT DEFAULT 'en', -- NEW
+        language TEXT DEFAULT 'en',
         cover_url TEXT,
         cover_path TEXT,
         total_pages INTEGER,
