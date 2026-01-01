@@ -15,7 +15,6 @@ FAILURE_FILE = "import_failures.csv"
 DB_PATH = "data/library.db"
 MATCH_THRESHOLD = 0.65 
 
-# Fallback defaults if "Own?" column is missing or empty
 SERVICE_DEFAULTS = {
     "Audible": ("Audible", False),
     "Kindle": ("Kindle", False),
@@ -28,12 +27,27 @@ SERVICE_DEFAULTS = {
     "Spotify": ("Audible", True),
 }
 
+# --- ARGUMENT PARSING ---
+# Usage: python import_csv.py [filename] [year]
 if len(sys.argv) > 1:
     CSV_FILE = sys.argv[1]
-    print(f"--> Using custom file: {CSV_FILE}")
 else:
     CSV_FILE = DEFAULT_CSV
-    print(f"--> Using default file: {CSV_FILE}")
+
+FILTER_YEAR = None # Default is None (Process All)
+
+if len(sys.argv) > 2:
+    try:
+        FILTER_YEAR = int(sys.argv[2])
+    except ValueError:
+        print("Error: Year must be a number.")
+        sys.exit(1)
+
+print(f"--> Using file: {CSV_FILE}")
+if FILTER_YEAR:
+    print(f"--> Filtering for Year: {FILTER_YEAR}")
+else:
+    print(f"--> Mode: Processing ALL years")
 
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
@@ -69,7 +83,6 @@ def fetch_google_candidates(title, author, isbn=None, limit=3):
                 raw_cover = info.get("imageLinks", {}).get("thumbnail", "")
                 cover = raw_cover.replace("http://", "https://").replace("&edge=curl", "").replace("zoom=1", "zoom=0")
                 
-                # Extract ISBN
                 found_isbn = ""
                 for ident in info.get("industryIdentifiers", []):
                     if ident["type"] == "ISBN_13":
@@ -97,9 +110,10 @@ def fetch_google_candidates(title, author, isbn=None, limit=3):
 def clean_date(date_str):
     try:
         dt = parser.parse(date_str)
-        return dt.strftime("%Y-%m-%d")
+        return dt.strftime("%Y-%m-%d"), dt.year
     except:
-        return datetime.now().strftime("%Y-%m-%d")
+        now = datetime.now()
+        return now.strftime("%Y-%m-%d"), now.year
 
 def run_import():
     conn = get_db_connection()
@@ -107,9 +121,10 @@ def run_import():
     
     success_count = 0
     failure_count = 0
+    skipped_count = 0
     failed_rows = []
 
-    print(f"--- STARTING IMPORT FROM {CSV_FILE} ---")
+    print(f"--- STARTING IMPORT ---")
 
     with open(CSV_FILE, 'r', encoding='utf-8-sig') as f:
         reader = csv.DictReader(f)
@@ -117,6 +132,19 @@ def run_import():
         
         for row in reader:
             title = row.get("Title", "").strip()
+            date_raw = row.get("Date Finished")
+            
+            # --- 0. YEAR FILTER CHECK ---
+            clean_dt, row_year = clean_date(date_raw)
+            
+            # Only skip if FILTER_YEAR is set AND it doesn't match
+            if FILTER_YEAR is not None and row_year != FILTER_YEAR:
+                skipped_count += 1
+                continue
+
+            if not title: continue 
+            print(f"Processing: {title}...")
+
             author = row.get("Author", "").strip()
             
             # --- 1. CAPTURE CSV METADATA ---
@@ -125,8 +153,7 @@ def run_import():
             csv_asin = row.get("ASIN", "").strip()
             csv_olid = row.get("OLID", "").strip()
             
-            # --- 2. CAPTURE USER DATA (RATING & OWNERSHIP) ---
-            # Parse Rating (Handle empty or "N/A")
+            # --- 2. CAPTURE USER DATA ---
             user_rating_raw = row.get("My Rating") or row.get("Rating")
             user_rating = None
             if user_rating_raw:
@@ -135,17 +162,12 @@ def run_import():
                 except:
                     user_rating = None
 
-            # Parse Ownership (Look for "Own?" column first)
             service_raw = row.get("Service", "Physical").strip()
             own_raw = row.get("Own?", "").lower()
             
             defaults = SERVICE_DEFAULTS.get(service_raw, ("Physical", False))
-            
-            # Format is usually tied to service
             format_consumed = defaults[0]
             
-            # Logic: If CSV says "Yes", owned is True. If "No", owned is False.
-            # If empty, fallback to Service Defaults (e.g. Kindle Unlimited = False)
             if "yes" in own_raw:
                 is_owned = True
                 is_borrowed = False
@@ -153,11 +175,8 @@ def run_import():
                 is_owned = False
                 is_borrowed = True
             else:
-                is_owned = not defaults[1] # Flip the "Is Borrowed" default
+                is_owned = not defaults[1] 
                 is_borrowed = defaults[1]
-
-            if not title: continue 
-            print(f"Processing: {title}...")
 
             # --- 3. BOOK LOOKUP ---
             book_row = None
@@ -191,7 +210,6 @@ def run_import():
                 best_match = candidates[0]
                 similarity = calculate_similarity(title, best_match['title'])
                 
-                # Validation Logic
                 if best_match['search_method'] == 'Title' and similarity < MATCH_THRESHOLD:
                      print(f"  -> [FAIL] Low Confidence ({int(similarity*100)}%)")
                      row['Error_Reason'] = f"Low Confidence ({int(similarity*100)}%)"
@@ -201,7 +219,6 @@ def run_import():
                 
                 print(f"  -> [MATCH] Confidence {int(similarity*100)}%: '{best_match['title']}'")
 
-                # Merge CSV data with Google Data
                 final_subtitle = csv_subtitle if csv_subtitle else best_match['subtitle']
                 final_isbn = csv_isbn if csv_isbn else best_match['isbn13']
 
@@ -218,13 +235,12 @@ def run_import():
                 book_id = cursor.lastrowid
                 time.sleep(0.5) 
 
-            # --- 4. CREATE USER_BOOKS (With Rating & Ownership) ---
+            # --- 4. CREATE USER_BOOKS ---
             cursor.execute("SELECT id FROM user_books WHERE book_id = ?", (book_id,))
             ub_row = cursor.fetchone()
             
             if ub_row:
                 user_book_id = ub_row['id']
-                # Optional: Update rating if it exists in CSV but not in DB
                 if user_rating:
                     cursor.execute("UPDATE user_books SET user_rating = ? WHERE id = ?", (user_rating, user_book_id))
             else:
@@ -237,8 +253,6 @@ def run_import():
 
             # --- 5. LOG READING ---
             try:
-                date_raw = row.get("Date Finished")
-                clean_dt = clean_date(date_raw)
                 hours_raw = row.get("Hours")
                 try:
                     final_hours = float(hours_raw)
@@ -267,7 +281,13 @@ def run_import():
     conn.close()
 
     print("\n" + "="*40)
-    print(f"Summary: {success_count} Success, {failure_count} Failed")
+    year_label = str(FILTER_YEAR) if FILTER_YEAR else "ALL YEARS"
+    print(f"Summary for {year_label}:")
+    print(f"Imported: {success_count}")
+    print(f"Skipped:  {skipped_count} (Filter)")
+    print(f"Failed:   {failure_count}")
+    print("="*40)
+
     if failed_rows:
         with open(FAILURE_FILE, 'w', newline='', encoding='utf-8') as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
