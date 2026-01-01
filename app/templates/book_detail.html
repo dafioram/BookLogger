@@ -21,9 +21,9 @@
                     Google: <strong class="ml-1 text-slate-800">{{ book.average_rating or 'N/A' }}</strong>/5
                 </div>
                 <div class="px-4 py-2 rounded shadow-sm border text-sm flex items-center
-                    {% if book.user_rating %}bg-yellow-50 border-yellow-200 text-yellow-800{% else %}bg-gray-50 border-gray-200 text-gray-400{% endif %}">
+                    {% if calculated_rating %}bg-yellow-50 border-yellow-200 text-yellow-800{% else %}bg-gray-50 border-gray-200 text-gray-400{% endif %}">
                     <span class="mr-2 text-lg">⭐</span>
-                    My Rating: <strong class="ml-1 text-slate-800 text-lg">{{ book.user_rating or '-' }}</strong>/5
+                    My Rating: <strong class="ml-1 text-slate-800 text-lg">{{ calculated_rating if calculated_rating else '-' }}</strong>/5
                 </div>
             </div>
 
@@ -58,13 +58,6 @@
                             <option value="Shelved" {% if book.shelf_status == 'Shelved' %}selected{% endif %}>📚 Shelved (General)</option>
                             <option value="On Deck" {% if book.shelf_status == 'On Deck' %}selected{% endif %}>🔥 On Deck (Next Up)</option>
                         </select>
-                    </div>
-
-                    <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">My Rating (0-5)</label>
-                        <input type="number" name="user_rating" step="0.5" min="0" max="5" 
-                               value="{{ book.user_rating if book.user_rating else '' }}"
-                               class="w-full border rounded px-3 py-2 bg-gray-50 placeholder-gray-300" placeholder="e.g. 4.5">
                     </div>
 
                     <div>
@@ -143,7 +136,12 @@
                         <input type="number" step="0.1" name="hours" required class="w-full border border-blue-200 rounded px-2 py-1 text-sm" placeholder="1.5">
                     </div>
 
-                    <div class="md:col-span-2">
+                    <div class="md:col-span-1">
+                        <label class="block text-xs font-bold text-blue-800 uppercase mb-1">Rating (Optional)</label>
+                        <input type="number" step="0.1" min="0" max="5" name="session_rating" class="w-full border border-blue-200 rounded px-2 py-1 text-sm" placeholder="0-5">
+                    </div>
+
+                    <div class="md:col-span-1">
                         <label class="block text-xs font-bold text-blue-800 uppercase mb-1">Format</label>
                         <select name="format_consumed" class="w-full border border-blue-200 rounded px-2 py-1 text-sm bg-white">
                             <option value="Physical">Physical</option>
@@ -195,15 +193,24 @@
                         <p class="text-gray-600 text-sm mt-1 italic">"{{ log.log_notes }}"</p>
                         {% endif %}
                     </div>
-                    <div class="mt-2 md:mt-0 flex items-center space-x-4">
-                         {% if log.is_dnf %}
-                            <span class="text-red-600 font-bold text-sm bg-red-50 px-2 py-1 rounded border border-red-100">DNF</span>
-                        {% else %}
-                             <span class="font-bold text-slate-700">{{ log.hours_read }} hrs</span>
-                        {% endif %}
-                        
-                        <a href="/log/{{ log.id }}/edit" class="text-gray-300 hover:text-blue-600 text-xs font-bold uppercase">Edit</a>
-                    </div>
+					<div class="mt-2 md:mt-0 flex items-center space-x-4">
+						
+						{% if log.session_rating %}
+							 <span class="text-yellow-600 font-bold text-sm bg-yellow-50 px-2 py-1 rounded border border-yellow-100">
+								★ {{ log.session_rating }}
+							 </span>
+						{% endif %}
+
+						 {% if log.is_dnf %}
+							<span class="text-red-600 font-bold text-sm bg-red-50 px-2 py-1 rounded border border-red-100">DNF</span>
+						{% else %}
+							 <span class="font-bold text-slate-700">{{ log.hours_read }} hrs</span>
+						{% endif %}
+						
+						<a href="/log/{{ log.id }}/edit" class="text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1 rounded text-xs font-bold uppercase transition">
+							Edit
+						</a>
+					</div>
                 </div>
                 {% else %}
                 <div class="text-gray-500 text-center py-8 italic bg-gray-50 rounded border border-gray-100">

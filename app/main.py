@@ -323,7 +323,6 @@ async def add_book(
 @app.get("/book/{id}", response_class=HTMLResponse)
 async def book_detail(request: Request, id: int):
     conn = get_db_connection()
-    # ADDED cover_path to query
     row = conn.execute("""
         SELECT ub.*, b.* FROM user_books ub 
         JOIN books b ON ub.book_id = b.id 
@@ -332,17 +331,29 @@ async def book_detail(request: Request, id: int):
     
     if not row: raise HTTPException(status_code=404, detail="Book not found")
     
-    # Apply Logic
     book = process_book_row(row)
         
     logs = conn.execute("SELECT * FROM reading_logs WHERE user_book_id = ? ORDER BY date_finished DESC", (id,)).fetchall()
+    
+    # --- NEW: Calculate Average Rating ---
+    avg_row = conn.execute("""
+        SELECT AVG(session_rating) as avg_rating 
+        FROM reading_logs 
+        WHERE user_book_id = ? AND session_rating IS NOT NULL
+    """, (id,)).fetchone()
+    
+    calculated_rating = None
+    if avg_row and avg_row['avg_rating']:
+        calculated_rating = round(avg_row['avg_rating'], 1)
+
     conn.close()
     
     return templates.TemplateResponse("book_detail.html", {
         "request": request, 
         "book": book, 
         "logs": logs,
-        "formats_owned": book['formats'] # Use the processed list
+        "formats_owned": book['formats'],
+        "calculated_rating": calculated_rating # <-- Pass this to template
     })
 
 @app.post("/book/{id}/delete")
@@ -360,7 +371,7 @@ async def update_inventory(
     id: int, 
     shelf_status: str = Form(...),
     inventory_notes: str = Form(""),
-    user_rating: float = Form(None), # NEW FIELD
+    # REMOVED: user_rating argument
     # Standard
     physical: str = Form(None),
     kindle: str = Form(None),
@@ -371,7 +382,6 @@ async def update_inventory(
     libby_ebook: str = Form(None)
 ):
     formats = []
-    # Permanent Ownership Check
     owned_formats = 0
     
     if physical: 
@@ -384,22 +394,20 @@ async def update_inventory(
         formats.append("Audible")
         owned_formats += 1
         
-    # Borrowed Check
     if libby_audio: formats.append("Libby Audiobook")
     if libby_physical: formats.append("Libby Physical")
     if libby_ebook: formats.append("Libby eBook")
     
-    # Ownership Logic: If ANY permanent format is present, I own it.
     is_owned = True if owned_formats > 0 else False
     
     conn = get_db_connection()
     
-    # UPDATED SQL: Added user_rating = ?
+    # REMOVED: user_rating update logic
     conn.execute("""
         UPDATE user_books 
-        SET shelf_status = ?, inventory_notes = ?, formats_owned = ?, is_owned = ?, user_rating = ?
+        SET shelf_status = ?, inventory_notes = ?, formats_owned = ?, is_owned = ?
         WHERE id = ?
-    """, (shelf_status, inventory_notes, json.dumps(formats), is_owned, user_rating, id))
+    """, (shelf_status, inventory_notes, json.dumps(formats), is_owned, id))
     
     conn.commit()
     conn.close()
@@ -415,13 +423,14 @@ async def add_log(
     pace: str = Form("Medium"), 
     notes: str = Form(""), 
     is_dnf: bool = Form(False),
-    is_borrowed: bool = Form(False) # NEW PARAMETER
+    is_borrowed: bool = Form(False),
+    session_rating: float = Form(None) # <-- NEW ARGUMENT
 ):
     conn = get_db_connection()
     conn.execute("""
-        INSERT INTO reading_logs (user_book_id, date_finished, hours_read, format_consumed, pace, log_notes, is_dnf, is_borrowed)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (id, date_finished, hours, format_consumed, pace, notes, is_dnf, is_borrowed))
+        INSERT INTO reading_logs (user_book_id, date_finished, hours_read, format_consumed, pace, log_notes, is_dnf, is_borrowed, session_rating)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (id, date_finished, hours, format_consumed, pace, notes, is_dnf, is_borrowed, session_rating))
     
     if not is_dnf:
         conn.execute("UPDATE user_books SET read_status = 'Read' WHERE id = ?", (id,))
@@ -475,14 +484,15 @@ async def update_log(
     pace: str = Form("Medium"), 
     notes: str = Form(""), 
     is_dnf: bool = Form(False),
-    is_borrowed: bool = Form(False) # NEW PARAMETER
+    is_borrowed: bool = Form(False),
+    session_rating: float = Form(None) # <-- NEW ARGUMENT
 ):
     conn = get_db_connection()
     conn.execute("""
         UPDATE reading_logs 
-        SET date_finished = ?, hours_read = ?, format_consumed = ?, pace = ?, log_notes = ?, is_dnf = ?, is_borrowed = ? 
+        SET date_finished = ?, hours_read = ?, format_consumed = ?, pace = ?, log_notes = ?, is_dnf = ?, is_borrowed = ?, session_rating = ?
         WHERE id = ?
-    """, (date_finished, hours, format_consumed, pace, notes, is_dnf, is_borrowed, log_id))
+    """, (date_finished, hours, format_consumed, pace, notes, is_dnf, is_borrowed, session_rating, log_id))
     
     row = conn.execute("SELECT user_book_id FROM reading_logs WHERE id = ?", (log_id,)).fetchone()
     conn.commit()

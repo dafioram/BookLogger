@@ -18,6 +18,11 @@
             </div>
 
             <div>
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Session Rating (Optional)</label>
+                <input type="number" step="0.1" min="0" max="5" name="session_rating" value="{{ log.session_rating if log.session_rating else '' }}" class="w-full border rounded px-3 py-2" placeholder="0-5">
+            </div>
+
+            <div>
                 <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Format</label>
                 <select name="format_consumed" class="w-full border rounded px-3 py-2 bg-white">
                     <option value="Physical" {% if log.format_consumed == 'Physical' %}selected{% endif %}>Physical</option>
@@ -44,10 +49,14 @@
                     <span>This was a DNF (Did Not Finish)</span>
                 </label>
 
-                <div class="flex justify-between items-center">
-                    <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded font-bold hover:bg-blue-700">
+                <div class="flex items-center gap-3">
+                    <button type="submit" class="flex-grow bg-blue-600 text-white px-4 py-2 rounded font-bold hover:bg-blue-700 transition">
                         Save Changes
                     </button>
+                    
+                    <a href="/book/{{ log.user_book_id }}" class="flex-grow text-center bg-gray-100 text-gray-600 px-4 py-2 rounded font-bold hover:bg-gray-200 transition">
+                        Cancel / Back
+                    </a>
                 </div>
             </div>
         </form>
