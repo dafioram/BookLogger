@@ -2,57 +2,102 @@ import httpx
 import asyncio
 import difflib
 
+# --- CONFIGURATION ---
+MATCH_THRESHOLD = 40  # Minimum 'Match Score' required to even be considered
+
 # --- HELPER FUNCTIONS ---
 def is_isbn(query):
-    """Checks if the query looks like an ISBN (10 or 13 digits)."""
     if not query: return False
     clean = query.replace("-", "").replace(" ", "")
     return clean.isdigit() and len(clean) in [10, 13]
 
-def calculate_score(book, search_query):
+def normalize_text(text):
+    """Simple text cleaner for comparisons."""
+    if not text: return ""
+    return text.lower().strip().replace(":", "").replace("-", "")
+
+def calculate_match_score(book, query):
     """
-    Assigns a quality score (0-100) based on metadata completeness,
-    PLUS a relevance score based on the search query.
+    PHASE 1: IDENTITY
+    How well does this result match what the user asked for?
+    Returns 0-100.
     """
     score = 0
-    query_lower = search_query.lower().strip()
-    title_lower = book.get('title', '').lower()
-    author_lower = book.get('author', '').lower()
-
-    # --- 1. METADATA QUALITY (Max 100) ---
-    # Visuals
-    if book.get('cover') and "placeholder" not in book['cover']:
-        score += 40
-    # Context
-    if book.get('summary'):
+    q_norm = normalize_text(query)
+    t_norm = normalize_text(book.get('title', ''))
+    a_norm = normalize_text(book.get('author', ''))
+    
+    # 1. ISBN MATCH (The Golden Ticket)
+    if is_isbn(query):
+        clean_q = query.replace("-", "").replace(" ", "")
+        book_isbn = str(book.get('isbn', '')).replace("-", "")
+        if clean_q == book_isbn:
+            return 100 # Perfect Match
+            
+    # 2. TITLE MATCHING
+    if t_norm == q_norm:
+        score += 60  # Exact Title Match
+    elif t_norm.startswith(q_norm) or q_norm.startswith(t_norm):
+        score += 40  # Strong Partial Match
+    elif q_norm in t_norm:
+        score += 20  # Weak Partial Match
+        
+    # 3. AUTHOR MATCHING
+    if a_norm and a_norm in q_norm:
         score += 30
-    # Basics
-    if book.get('author') and book['author'] != "Unknown":
+    elif a_norm and q_norm in a_norm:
+        score += 30
+
+    return min(score, 100)
+
+def calculate_content_score(book):
+    """
+    PHASE 2: QUALITY
+    How rich/complete is this record?
+    Returns 0-100 (can go negative internally, clipped at 0).
+    """
+    score = 0
+    
+    # 1. Visuals (Heavy Weight)
+    if book.get('cover') and "placeholder" not in book['cover']:
+        score += 30  # Reduced slightly to make room for penalties
+    
+    # 2. Context (Heavy Weight)
+    summary = book.get('summary', '')
+    if summary and len(summary) > 50:
+        score += 30
+    elif not summary:
+        score -= 10  # Penalty for being a "ghost" record
+        
+    # 3. Metadata Basics (Medium Weight)
+    author = book.get('author', 'Unknown')
+    title = book.get('title', '')
+    
+    # --- UPDATED "IDEA FACTORY" FIX ---
+    clean_title = title.lower().strip()
+    clean_author = author.lower().strip()
+
+    # Check if author is inside title OR title is inside author (Fuzzy Echo)
+    if len(clean_author) > 3 and (clean_author in clean_title or clean_title in clean_author):
+        score -= 40  # Massive penalty for bad data (e.g. Author="Idea Factory")
+    elif author != "Unknown":
         score += 10
+
     if book.get('year'):
         score += 10
-    if book.get('isbn'):
-        score += 10
-
-    # --- 2. RELEVANCE BOOST (The "Exact Match" Fix) ---
+        
+    # 4. Page Count Realism
+    pages = book.get('pages', 0)
+    if pages > 0:
+        if pages < 50:
+            score -= 15  # Penalty: Likely a pamphlet/metadata fragment
+        else:
+            score += 5   # Reward: Standard book length
     
-    # EXACT Title Match (Highest Priority)
-    if title_lower == query_lower:
-        score += 100  # Massive boost ensures it tops the list
+    if book.get('isbn'):
+        score += 5
         
-    # STARTS WITH Title (High Priority)
-    elif title_lower.startswith(query_lower):
-        score += 50
-        
-    # CONTAINS Title (Medium Priority)
-    elif query_lower in title_lower:
-        score += 20
-        
-    # EXACT Author Match
-    if author_lower == query_lower:
-        score += 60 # Authors search for themselves often
-        
-    return score
+    return max(0, min(score, 100))
 
 # --- SEARCH FUNCTIONS ---
 async def search_google(client, query):
@@ -62,46 +107,31 @@ async def search_google(client, query):
         clean_isbn = query.replace("-", "").replace(" ", "")
         strategies = [f"isbn:{clean_isbn}"]
     else:
-        strategies = [
-            query,              # Broad
-            f"intitle:{query}"  # Targeted
-        ]
+        strategies = [query, f"intitle:{query}"]
 
-    tasks = []
-    for strat in strategies:
-        url = f"https://www.googleapis.com/books/v1/volumes?q={strat}&maxResults=30"
-        tasks.append(client.get(url))
-        
+    tasks = [client.get(f"https://www.googleapis.com/books/v1/volumes?q={s}&maxResults=20") for s in strategies]
     responses = await asyncio.gather(*tasks, return_exceptions=True)
     
     seen_ids = set()
     
     for resp in responses:
-        if isinstance(resp, Exception) or resp.status_code != 200: 
-            continue
-            
+        if isinstance(resp, Exception) or resp.status_code != 200: continue
         data = resp.json()
-        if "items" not in data: 
-            continue
+        if "items" not in data: continue
             
         for item in data["items"]:
-            if item["id"] in seen_ids:
-                continue
+            if item["id"] in seen_ids: continue
             seen_ids.add(item["id"])
             
             vol = item.get("volumeInfo", {})
-            
             raw_cover = vol.get("imageLinks", {}).get("thumbnail", "")
             cover = raw_cover.replace("http://", "https://").replace("&edge=curl", "").replace("zoom=1", "zoom=0")
             if not cover: cover = "/static/placeholder.png"
 
             isbn = None
             for ident in vol.get("industryIdentifiers", []):
-                if ident["type"] == "ISBN_13":
-                    isbn = ident["identifier"]
+                if ident["type"] == "ISBN_13": isbn = ident["identifier"]
             
-            rating = vol.get("averageRating", 0)
-
             book = {
                 "source": "Google",
                 "source_id": item["id"],
@@ -112,20 +142,36 @@ async def search_google(client, query):
                 "pages": vol.get("pageCount", 0),
                 "summary": vol.get("description", ""),
                 "genres": ", ".join(vol.get("categories", [])),
-                "rating": rating,
+                "rating": vol.get("averageRating", 0),
                 "isbn": isbn,
                 "olid": None
             }
-            # PASS QUERY TO SCORE
-            book['score'] = calculate_score(book, query)
-            results.append(book)
+            
+            # --- CALCULATE SCORES ---
+            raw_match = calculate_match_score(book, query)
+            raw_content = calculate_content_score(book)
+            
+            book['match_score'] = raw_match
+            book['content_score'] = raw_content
+            
+            # Weighted Score: Content has 50% voting power of Match
+            # Allows high quality to beat exact text matches
+            book['score'] = raw_match + (raw_content / 2)
 
+            # Debug Info (for frontend display)
+            book['debug'] = {
+                'match': raw_match,
+                'content': raw_content,
+                'total': book['score']
+            }
+            
+            results.append(book)
     return results
 
 async def search_open_library(client, query):
     results = []
     try:
-        resp = await client.get(f"https://openlibrary.org/search.json?q={query}&limit=30")
+        resp = await client.get(f"https://openlibrary.org/search.json?q={query}&limit=20")
         if resp.status_code != 200: return []
         data = resp.json()
         
@@ -134,11 +180,8 @@ async def search_open_library(client, query):
                 cover_id = item.get("cover_i")
                 cover = f"https://covers.openlibrary.org/b/id/{cover_id}-M.jpg" if cover_id else "/static/placeholder.png"
 
-                isbn_list = item.get("isbn", [])
-                isbn = isbn_list[0] if isbn_list else None
-
-                author_list = item.get("author_name", ["Unknown"])
-                author = ", ".join(author_list[:2])
+                isbn = item.get("isbn", [None])[0]
+                author = ", ".join(item.get("author_name", ["Unknown"])[:2])
 
                 book = {
                     "source": "OpenLibrary",
@@ -154,8 +197,23 @@ async def search_open_library(client, query):
                     "isbn": isbn,
                     "olid": item.get("key", "").replace("/works/", "")
                 }
-                # PASS QUERY TO SCORE
-                book['score'] = calculate_score(book, query)
+                
+                # --- CALCULATE SCORES ---
+                raw_match = calculate_match_score(book, query)
+                raw_content = calculate_content_score(book)
+                
+                book['match_score'] = raw_match
+                book['content_score'] = raw_content
+                
+                # Consistent weighting with Google
+                book['score'] = raw_match + (raw_content / 2)
+
+                book['debug'] = {
+                    'match': raw_match,
+                    'content': raw_content,
+                    'total': book['score']
+                }
+                
                 results.append(book)
     except Exception as e:
         print(f"OpenLibrary Search Error: {e}")
@@ -165,23 +223,19 @@ async def search_open_library(client, query):
 # --- AGGREGATOR ---
 async def search_aggregated(query):
     async with httpx.AsyncClient() as client:
-        # 1. Run both searches in parallel
-        # We still want to search both because sometimes Google misses a book 
-        # that Open Library finds (and vice versa).
         google_task = search_google(client, query)
         ol_task = search_open_library(client, query)
         
         g_results, ol_results = await asyncio.gather(google_task, ol_task)
         
-    # 2. NO MERGING
-    # We simply combine the lists. 
-    # This means you might see duplicate titles in the UI (one from Google, one from OL),
-    # but that is actually transparent and honest—you get to pick the source you prefer.
-    combined_list = g_results + ol_results
+    combined = g_results + ol_results
     
-    # 3. SORT BY SCORE (The "Smart" part)
-    # We still rely on your scoring logic (Exact Title Match = +100 points).
-    # This ensures the most relevant book hits the top, regardless of which API found it.
-    combined_list.sort(key=lambda x: x['score'], reverse=True)
+    # 1. FILTER: The Gatekeeper
+    filtered = [b for b in combined if b['match_score'] >= MATCH_THRESHOLD]
     
-    return combined_list
+    # 2. SORT: The Ranker
+    # CRITICAL FIX: Sort by the calculated 'score', NOT the tuple.
+    # The tuple sort (match, content) ignored our weighting logic!
+    filtered.sort(key=lambda x: x['score'], reverse=True)
+    
+    return filtered

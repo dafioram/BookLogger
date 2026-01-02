@@ -575,19 +575,25 @@ async def get_cover_options(request: Request, id: int):
     
     if not book: return "Book not found"
 
-    # 1. Search using ISBN (best) or Title
-    query = book['isbn13'] if book['isbn13'] else f"{book['title']} {book['author']}"
+    # --- THE FIX: Widen the Search ---
+    # OLD: query = book['isbn13'] if book['isbn13'] else f"{book['title']} {book['author']}"
+    # This was too strict. If OL didn't have that specific ISBN, we got 0 results.
     
-    # 2. Reuse your existing smart search
+    # NEW: Always search by Title + Author.
+    # This finds ALL editions (Paperback, Hardcover, Kindle) across both Google and Open Library.
+    # Our 'calculate_match_score' in metadata.py will ensure they are actually the right book.
+    query = f"{book['title']} {book['author']}"
+    
+    # Reuse your existing smart search
     results = await search_aggregated(query)
     
-    # 3. Filter down to just unique, valid images
-    # We use a set to dedup URLs
+    # Filter down to just unique, valid images
     unique_covers = []
     seen_urls = set()
     
     for r in results:
         url = r.get('cover')
+        # We also check if the URL is actually a valid image string
         if url and "placeholder" not in url and url not in seen_urls:
             unique_covers.append(url)
             seen_urls.add(url)

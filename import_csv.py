@@ -4,7 +4,6 @@ import time
 import json
 import os
 import sys
-import difflib
 import asyncio
 from dateutil import parser
 from datetime import datetime
@@ -21,7 +20,9 @@ except ImportError:
 DEFAULT_CSV = "Books Read.csv" 
 FAILURE_FILE = "import_failures.csv"
 DB_PATH = "data/library.db"
-MATCH_THRESHOLD = 0.65 
+
+# Note: We now trust metadata.py's threshold, but we can set a failsafe here if needed.
+# Since metadata.py filters < 40, anything returned is "valid" by definition.
 
 SERVICE_DEFAULTS = {
     "Audible": ("Audible", False),
@@ -58,13 +59,6 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
-def calculate_similarity(s1, s2):
-    if not s1 or not s2: return 0.0
-    s1 = s1.lower().strip()
-    s2 = s2.lower().strip()
-    if s1 in s2 or s2 in s1: return 0.9 
-    return difflib.SequenceMatcher(None, s1, s2).ratio()
-
 def clean_date(date_str):
     try:
         dt = parser.parse(date_str)
@@ -73,13 +67,10 @@ def clean_date(date_str):
         now = datetime.now()
         return now.strftime("%Y-%m-%d"), now.year
 
-# Helper to find the "Skip Import" column regardless of casing/spaces
 def get_skip_value(row):
-    # 1. Try exact match
+    """Robustly finds 'Skip Import' column."""
     val = row.get("Skip Import")
     if val is not None: return val
-    
-    # 2. Try case-insensitive match
     for key in row.keys():
         if key and key.strip().lower() == "skip import":
             return row[key]
@@ -98,19 +89,13 @@ def run_import():
 
     with open(CSV_FILE, 'r', encoding='utf-8-sig') as f:
         reader = csv.DictReader(f)
-        
-        # Verify Headers
-        headers = [h.strip() for h in reader.fieldnames]
-        if "Skip Import" not in headers:
-            print(f"WARNING: 'Skip Import' column not found in CSV headers. Detected: {headers}")
-        
         fieldnames = reader.fieldnames + ['Error_Reason', 'Found_Title']
         
         for row in reader:
             title = row.get("Title", "").strip()
             date_raw = row.get("Date Finished")
             
-            # --- 0. YEAR FILTER CHECK ---
+            # --- 0. YEAR FILTER ---
             clean_dt, row_year = clean_date(date_raw)
             if FILTER_YEAR is not None and row_year != FILTER_YEAR:
                 skipped_count += 1
@@ -119,7 +104,7 @@ def run_import():
             if not title: continue 
             print(f"Processing: {title}...")
 
-            # --- CHECK SKIP IMPORT COLUMN (ROBUST) ---
+            # --- CHECK SKIP IMPORT ---
             raw_skip = get_skip_value(row)
             is_skipped = "yes" in str(raw_skip).strip().lower()
 
@@ -168,7 +153,7 @@ def run_import():
             total_pages = 0
             
             if book_row:
-                # EXISTING BOOK: If skipped, fail here immediately
+                # EXISTING BOOK
                 if is_skipped:
                      print(f"  -> [SKIP] User flagged to skip (Book exists in DB).")
                      row['Error_Reason'] = "User Skipped (Exists in DB)"
@@ -181,37 +166,26 @@ def run_import():
                 total_pages = book_row['total_pages'] or 0
                 print(f"  -> [MATCH] Existing DB ID {book_id}: '{book_row['title']}'")
             else:
-                # --- NEW BOOK: RUN SEARCH FIRST ---
-                # We search FIRST so we can record what we found in the failure file
+                # --- NEW BOOK LOGIC ---
                 search_query = title
                 if csv_isbn:
                     search_query = f"isbn:{csv_isbn}"
                 else:
                     search_query = f"{title} {author}"
 
+                # Run Search (Now trusts metadata.py's scoring)
                 candidates = asyncio.run(search_aggregated(search_query))
                 
                 best_match = None
                 if candidates:
-                    if csv_isbn:
-                        best_match = candidates[0]
-                    else:
-                        for cand in candidates:
-                            sim = calculate_similarity(title, cand['title'])
-                            if sim >= MATCH_THRESHOLD:
-                                best_match = cand
-                                print(f"  -> [MATCH] Source: {cand['source']} | Score: {cand['score']} | Similarity: {int(sim*100)}%")
-                                break
-                        
-                        # Keep top candidate for logging purposes even if low confidence
-                        if not best_match and candidates:
-                             best_match = candidates[0]
+                    # Candidates are already sorted by Match Score -> Content Score
+                    best_match = candidates[0]
+                    print(f"  -> [MATCH] Source: {best_match['source']} | Match: {best_match['match_score']} | Content: {best_match['content_score']}")
 
                 if best_match:
                     row['Found_Title'] = best_match['title']
 
-                # --- NOW CHECK SKIP ---
-                # This ensures 'Found_Title' is populated in the CSV before we exit
+                # --- CHECK SKIP ---
                 if is_skipped:
                     print(f"  -> [SKIP] User flagged to skip.")
                     row['Error_Reason'] = "User Skipped"
@@ -219,21 +193,15 @@ def run_import():
                     failure_count += 1
                     continue
 
-                # --- VALIDATE MATCH ---
-                valid_match = False
-                if best_match:
-                    if csv_isbn: 
-                        valid_match = True
-                    elif calculate_similarity(title, best_match['title']) >= MATCH_THRESHOLD:
-                        valid_match = True
-
-                if not valid_match:
+                # --- VALIDATE ---
+                if not best_match:
                     print(f"  -> [FAIL] No matches met threshold.")
                     row['Error_Reason'] = "Low Confidence / No Match"
                     failed_rows.append(row)
                     failure_count += 1
                     continue
 
+                # --- INSERT BOOK (This is the part that was missing!) ---
                 final_subtitle = csv_subtitle
                 final_isbn = csv_isbn if csv_isbn else best_match['isbn']
                 final_olid = csv_olid if csv_olid else best_match['olid']
@@ -252,6 +220,11 @@ def run_import():
                 time.sleep(0.1) 
 
             # --- 4. CREATE USER_BOOKS ---
+            # If book_id is None here, it means the logic above failed to set it.
+            if book_id is None:
+                print("CRITICAL ERROR: book_id is None. Skipping row.")
+                continue
+
             cursor.execute("SELECT id FROM user_books WHERE book_id = ?", (book_id,))
             ub_row = cursor.fetchone()
             
