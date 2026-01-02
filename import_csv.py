@@ -10,8 +10,6 @@ from dateutil import parser
 from datetime import datetime
 
 # --- IMPORT YOUR SMART SEARCH ---
-# This requires that 'app' is a python package (has __init__.py)
-# and you run this script from the root folder.
 try:
     from app.metadata import search_aggregated
 except ImportError:
@@ -54,8 +52,6 @@ if len(sys.argv) > 2:
 print(f"--> Using file: {CSV_FILE}")
 if FILTER_YEAR:
     print(f"--> Filtering for Year: {FILTER_YEAR}")
-else:
-    print(f"--> Mode: Processing ALL years")
 
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
@@ -77,6 +73,18 @@ def clean_date(date_str):
         now = datetime.now()
         return now.strftime("%Y-%m-%d"), now.year
 
+# Helper to find the "Skip Import" column regardless of casing/spaces
+def get_skip_value(row):
+    # 1. Try exact match
+    val = row.get("Skip Import")
+    if val is not None: return val
+    
+    # 2. Try case-insensitive match
+    for key in row.keys():
+        if key and key.strip().lower() == "skip import":
+            return row[key]
+    return ""
+
 def run_import():
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -90,6 +98,12 @@ def run_import():
 
     with open(CSV_FILE, 'r', encoding='utf-8-sig') as f:
         reader = csv.DictReader(f)
+        
+        # Verify Headers
+        headers = [h.strip() for h in reader.fieldnames]
+        if "Skip Import" not in headers:
+            print(f"WARNING: 'Skip Import' column not found in CSV headers. Detected: {headers}")
+        
         fieldnames = reader.fieldnames + ['Error_Reason', 'Found_Title']
         
         for row in reader:
@@ -104,6 +118,10 @@ def run_import():
 
             if not title: continue 
             print(f"Processing: {title}...")
+
+            # --- CHECK SKIP IMPORT COLUMN (ROBUST) ---
+            raw_skip = get_skip_value(row)
+            is_skipped = "yes" in str(raw_skip).strip().lower()
 
             author = row.get("Author", "").strip()
             
@@ -138,12 +156,10 @@ def run_import():
 
             # --- 3. BOOK LOOKUP ---
             book_row = None
-            # Check DB by ISBN
             if csv_isbn:
                 cursor.execute("SELECT id, title, total_pages FROM books WHERE isbn13 = ?", (csv_isbn,))
                 book_row = cursor.fetchone()
             
-            # Check DB by Title
             if not book_row:
                 cursor.execute("SELECT id, title, total_pages FROM books WHERE title LIKE ?", (f"{title}%",))
                 book_row = cursor.fetchone()
@@ -152,49 +168,76 @@ def run_import():
             total_pages = 0
             
             if book_row:
+                # EXISTING BOOK: If skipped, fail here immediately
+                if is_skipped:
+                     print(f"  -> [SKIP] User flagged to skip (Book exists in DB).")
+                     row['Error_Reason'] = "User Skipped (Exists in DB)"
+                     row['Found_Title'] = book_row['title']
+                     failed_rows.append(row)
+                     failure_count += 1
+                     continue
+
                 book_id = book_row['id']
                 total_pages = book_row['total_pages'] or 0
                 print(f"  -> [MATCH] Existing DB ID {book_id}: '{book_row['title']}'")
             else:
-                # --- NEW LOGIC: Use Smart Aggregated Search ---
+                # --- NEW BOOK: RUN SEARCH FIRST ---
+                # We search FIRST so we can record what we found in the failure file
                 search_query = title
                 if csv_isbn:
                     search_query = f"isbn:{csv_isbn}"
                 else:
                     search_query = f"{title} {author}"
 
-                # Run the Async function synchronously
                 candidates = asyncio.run(search_aggregated(search_query))
                 
-                # Filter candidates by similarity to ensure we didn't get a high-quality WRONG book
                 best_match = None
-                
-                for cand in candidates:
-                    # If searched by ISBN, we trust it implicitly
+                if candidates:
                     if csv_isbn:
-                        best_match = cand
-                        break
+                        best_match = candidates[0]
+                    else:
+                        for cand in candidates:
+                            sim = calculate_similarity(title, cand['title'])
+                            if sim >= MATCH_THRESHOLD:
+                                best_match = cand
+                                print(f"  -> [MATCH] Source: {cand['source']} | Score: {cand['score']} | Similarity: {int(sim*100)}%")
+                                break
                         
-                    # Otherwise, check similarity
-                    sim = calculate_similarity(title, cand['title'])
-                    if sim >= MATCH_THRESHOLD:
-                        best_match = cand
-                        print(f"  -> [MATCH] Source: {cand['source']} | Score: {cand['score']} | Similarity: {int(sim*100)}%")
-                        break
-                
-                if not best_match:
-                    print(f"  -> [FAIL] No matching results found.")
-                    row['Error_Reason'] = "No Matches Found"
+                        # Keep top candidate for logging purposes even if low confidence
+                        if not best_match and candidates:
+                             best_match = candidates[0]
+
+                if best_match:
+                    row['Found_Title'] = best_match['title']
+
+                # --- NOW CHECK SKIP ---
+                # This ensures 'Found_Title' is populated in the CSV before we exit
+                if is_skipped:
+                    print(f"  -> [SKIP] User flagged to skip.")
+                    row['Error_Reason'] = "User Skipped"
                     failed_rows.append(row)
                     failure_count += 1
                     continue
 
-                final_subtitle = csv_subtitle # We don't get subtitle from aggregator currently
+                # --- VALIDATE MATCH ---
+                valid_match = False
+                if best_match:
+                    if csv_isbn: 
+                        valid_match = True
+                    elif calculate_similarity(title, best_match['title']) >= MATCH_THRESHOLD:
+                        valid_match = True
+
+                if not valid_match:
+                    print(f"  -> [FAIL] No matches met threshold.")
+                    row['Error_Reason'] = "Low Confidence / No Match"
+                    failed_rows.append(row)
+                    failure_count += 1
+                    continue
+
+                final_subtitle = csv_subtitle
                 final_isbn = csv_isbn if csv_isbn else best_match['isbn']
                 final_olid = csv_olid if csv_olid else best_match['olid']
                 
-                # Map standardized keys to DB columns
-                # Note: We use 'source_id' for 'google_id' column to enforce uniqueness
                 cursor.execute("""
                     INSERT INTO books (google_id, isbn13, asin, olid, title, subtitle, author, publication_year, cover_url, total_pages, summary, genres, average_rating)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -227,14 +270,11 @@ def run_import():
             # --- 5. LOG READING ---
             try:
                 hours_raw = row.get("Hours")
-                try:
-                    final_hours = float(hours_raw)
-                except:
-                    final_hours = round(total_pages / 40, 1) if total_pages else 0
+                try: final_hours = float(hours_raw)
+                except: final_hours = round(total_pages / 40, 1) if total_pages else 0
 
                 cursor.execute("SELECT id FROM reading_logs WHERE user_book_id = ? AND date_finished = ?", (user_book_id, clean_dt))
                 if not cursor.fetchone():
-                    # UPDATED: Includes session_rating
                     cursor.execute("""
                         INSERT INTO reading_logs (user_book_id, date_finished, hours_read, format_consumed, is_borrowed, session_rating)
                         VALUES (?, ?, ?, ?, ?, ?)
