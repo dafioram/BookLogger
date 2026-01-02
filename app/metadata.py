@@ -151,19 +151,14 @@ async def search_google(client, query):
             raw_match = calculate_match_score(book, query)
             raw_content = calculate_content_score(book)
             
-            book['match_score'] = raw_match
-            book['content_score'] = raw_content
-            
             # Weighted Score: Content has 50% voting power of Match
-            # Allows high quality to beat exact text matches
-            book['score'] = raw_match + (raw_content / 2)
-
-            # Debug Info (for frontend display)
-            book['debug'] = {
-                'match': raw_match,
-                'content': raw_content,
-                'total': book['score']
-            }
+            final_score = raw_match + (raw_content / 2)
+            
+            # --- UI OUTPUTS ---
+            book['match_score'] = int(raw_match)
+            book['content_score'] = int(raw_content) # Keep internal for debug
+            book['rank_score'] = int(final_score)    # The total for your UI
+            book['score'] = final_score              # High precision for sorting
             
             results.append(book)
     return results
@@ -202,17 +197,13 @@ async def search_open_library(client, query):
                 raw_match = calculate_match_score(book, query)
                 raw_content = calculate_content_score(book)
                 
-                book['match_score'] = raw_match
-                book['content_score'] = raw_content
+                final_score = raw_match + (raw_content / 2)
                 
-                # Consistent weighting with Google
-                book['score'] = raw_match + (raw_content / 2)
-
-                book['debug'] = {
-                    'match': raw_match,
-                    'content': raw_content,
-                    'total': book['score']
-                }
+                # --- UI OUTPUTS ---
+                book['match_score'] = int(raw_match)
+                book['content_score'] = int(raw_content)
+                book['rank_score'] = int(final_score)
+                book['score'] = final_score
                 
                 results.append(book)
     except Exception as e:
