@@ -1,35 +1,72 @@
-{% for r in results %}
-<div class="flex items-start bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-    <img src="{{ r.cover }}" class="w-16 h-24 object-cover rounded shadow mr-4">
-    <div class="flex-1">
-        <h3 class="font-bold text-lg">{{ r.title }}</h3>
-        <p class="text-sm text-gray-600">{{ r.author }} ({{ r.year }})</p>
+{% for book in results %}
+<div class="flex flex-col md:flex-row bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition mb-4 overflow-hidden">
+    
+    <div class="w-full md:w-32 h-48 flex-shrink-0 bg-gray-100 relative">
+        <img src="{{ book.cover }}" class="w-full h-full object-cover">
         
-        <div class="flex space-x-2 mt-1">
-            <span class="text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-600">{{ r.genres }}</span>
-            {% if r.rating > 0 %}
-            <span class="text-xs text-yellow-600 font-bold">★ {{ r.rating }}</span>
-            {% endif %}
+        <div class="absolute top-0 left-0 px-2 py-1 text-[10px] font-bold text-white uppercase tracking-wider
+            {% if book.source == 'Google' %}bg-blue-600{% else %}bg-amber-700{% endif %}">
+            {{ book.source }}
         </div>
     </div>
     
-    <form hx-post="/api/add_book" hx-swap="outerHTML">
-        <input type="hidden" name="google_id" value="{{ r.google_id }}">
-        <input type="hidden" name="title"     value="{{ r.title }}">
-        <input type="hidden" name="author"    value="{{ r.author }}">
-        <input type="hidden" name="cover"     value="{{ r.cover }}">
-        <input type="hidden" name="pages"     value="{{ r.pages }}">
-		<input type="hidden" name="year"      value="{{ r.year }}">
-        <input type="hidden" name="isbn13"    value="{{ r.isbn13 }}">
-        <input type="hidden" name="summary"   value="{{ r.summary }}">
-        <input type="hidden" name="genres"    value="{{ r.genres }}">
-        <input type="hidden" name="rating"    value="{{ r.rating }}">
+    <div class="p-4 flex-grow flex flex-col justify-between">
+        <div>
+            <div class="flex justify-between items-start">
+                <h3 class="font-bold text-lg text-slate-800 leading-tight mb-1">{{ book.title }}</h3>
+                {% if book.rating > 0 %}
+                <div class="flex items-center text-yellow-500 text-sm font-bold bg-yellow-50 px-2 rounded">
+                    ★ {{ book.rating }}
+                </div>
+                {% endif %}
+            </div>
+            
+            <p class="text-sm text-gray-600 mb-2">{{ book.author }}</p>
+            
+            <div class="flex flex-wrap gap-2 text-xs text-gray-500 mb-3">
+                {% if book.year %}
+                <span class="bg-gray-100 px-2 py-1 rounded">📅 {{ book.year }}</span>
+                {% endif %}
+                {% if book.pages %}
+                <span class="bg-gray-100 px-2 py-1 rounded">📄 {{ book.pages }} pages</span>
+                {% endif %}
+                {% if book.isbn %}
+                <span class="bg-gray-100 px-2 py-1 rounded font-mono">ISBN: {{ book.isbn }}</span>
+                {% endif %}
+            </div>
+            
+            <p class="text-xs text-gray-500 line-clamp-2">
+                {% if book.summary %}
+                    {{ book.summary }}
+                {% else %}
+                    <span class="italic text-gray-400">No summary available via {{ book.source }}.</span>
+                {% endif %}
+            </p>
+        </div>
         
-        <button type="submit" class="bg-slate-800 text-white px-4 py-2 rounded text-sm hover:bg-slate-700 transition">
-            + Add
-        </button>
-    </form>
+        <div class="mt-4 flex justify-end">
+            <form hx-post="/api/add_book" hx-swap="outerHTML">
+                <input type="hidden" name="google_id" value="{{ book.source_id }}">
+                <input type="hidden" name="title" value="{{ book.title }}">
+                <input type="hidden" name="author" value="{{ book.author }}">
+                <input type="hidden" name="cover" value="{{ book.cover }}">
+                <input type="hidden" name="year" value="{{ book.year }}">
+                <input type="hidden" name="pages" value="{{ book.pages }}">
+                <input type="hidden" name="isbn13" value="{{ book.isbn }}">
+                <input type="hidden" name="summary" value="{{ book.summary }}">
+                <input type="hidden" name="genres" value="{{ book.genres }}">
+                <input type="hidden" name="rating" value="{{ book.rating }}">
+                <input type="hidden" name="olid" value="{{ book.olid }}">
+                
+                <button type="submit" class="bg-slate-800 text-white px-4 py-2 rounded text-sm font-bold hover:bg-slate-700 transition flex items-center">
+                    <span>➕ Add to Library</span>
+                </button>
+            </form>
+        </div>
+    </div>
 </div>
 {% else %}
-<p class="text-gray-500 text-center">No results found.</p>
+<div class="text-center py-8 text-gray-500 italic">
+    No results found. Try a different search term.
+</div>
 {% endfor %}

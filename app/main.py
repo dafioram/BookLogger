@@ -8,8 +8,10 @@ import httpx
 import json
 import math
 import os
+import uuid # <-- Added for Manual ID generation
 from datetime import date
 from .database import init_db, get_db_connection, backup_database
+from .metadata import search_aggregated # <-- Added for Search Aggregation
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -190,7 +192,7 @@ async def stats_page(request: Request, year: int = None):
             b.author, 
             b.cover_url, 
             b.cover_path,
-            ub.effective_user_rating as user_rating, -- UPDATED: Use the cached rating
+            ub.effective_user_rating as user_rating,
             rl.date_finished, 
             rl.format_consumed, 
             rl.is_borrowed,
@@ -259,7 +261,7 @@ async def top_books_page(request: Request):
     return templates.TemplateResponse("top_books.html", {"request": request, "books": books})
 
 @app.get("/library", response_class=HTMLResponse)
-async def library(request: Request, q: str = "", sort: str = "title_asc"): # <-- Default changed here
+async def library(request: Request, q: str = "", sort: str = "title_asc"):
     conn = get_db_connection()
     
     query = """
@@ -283,8 +285,7 @@ async def library(request: Request, q: str = "", sort: str = "title_asc"): # <--
     elif sort == "rating_desc":
         query += " ORDER BY ub.effective_user_rating DESC"
     else:
-        # Default: Title (A-Z) - This catches 'title_asc' or any invalid sort param
-        # Use 'LOWER(b.title)' if you want case-insensitive sorting (recommended)
+        # Default: Title (A-Z)
         query += " ORDER BY b.title ASC" 
 
     books_rows = conn.execute(query, params).fetchall()
@@ -303,43 +304,13 @@ async def library(request: Request, q: str = "", sort: str = "title_asc"): # <--
 async def search_page(request: Request):
     return templates.TemplateResponse("search.html", {"request": request})
 
-@app.post("/api/search_google")
-async def search_google(request: Request, query: str = Form(...)):
+# --- NEW: Aggregated Search Route ---
+@app.post("/api/search")
+async def search_api(request: Request, query: str = Form(...)):
     if not query: return ""
     
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(f"https://www.googleapis.com/books/v1/volumes?q={query}&maxResults=10")
-        data = resp.json()
-    
-    results = []
-    if "items" in data:
-        for item in data["items"]:
-            vol = item.get("volumeInfo", {})
-            
-            raw_cover = vol.get("imageLinks", {}).get("thumbnail", "/static/placeholder.png")
-            cover = raw_cover.replace("http://", "https://").replace("&edge=curl", "").replace("zoom=1", "zoom=0")
-            
-            # ISBN Extraction
-            isbn = None
-            for ident in vol.get("industryIdentifiers", []):
-                if ident["type"] == "ISBN_13":
-                    isbn = ident["identifier"]
-            
-            genres = vol.get("categories", ["Unknown"])
-            rating = vol.get("averageRating", 0)
-            
-            results.append({
-                "google_id": item["id"],
-                "isbn13": isbn,
-                "title": vol.get("title", "Unknown Title"),
-                "author": ", ".join(vol.get("authors", ["Unknown"])),
-                "year": vol.get("publishedDate", "")[:4],
-                "cover": cover,
-                "pages": vol.get("pageCount", 0),
-                "summary": vol.get("description", "No description available."),
-                "genres": ", ".join(genres),
-                "rating": rating
-            })
+    # Calls metadata.py to search Google + Open Library
+    results = await search_aggregated(query)
             
     return templates.TemplateResponse("partials/search_row.html", {"request": request, "results": results})
 
@@ -354,26 +325,30 @@ async def add_book(
     genres: str = Form(""),       
     rating: float = Form(0.0),    
     year: str = Form(""),
-    isbn13: str = Form(None)
+    isbn13: str = Form(None),
+    olid: str = Form(None) # <-- Added OLID support
 ):
     conn = get_db_connection()
     cursor = conn.cursor()
     
+    # Check for existing book by ID
     cursor.execute("SELECT id FROM books WHERE google_id = ?", (google_id,))
     row = cursor.fetchone()
     
     if row:
         book_id = row['id']
+        # Update existing record
         cursor.execute("""
             UPDATE books 
-            SET publication_year = ?, genres = ?, average_rating = ?, summary = ?, isbn13 = ?
+            SET publication_year = ?, genres = ?, average_rating = ?, summary = ?, isbn13 = ?, olid = ?
             WHERE id = ?
-        """, (year, genres, rating, summary, isbn13, book_id))
+        """, (year, genres, rating, summary, isbn13, olid, book_id))
     else:
+        # Insert new record
         cursor.execute("""
-            INSERT INTO books (google_id, isbn13, title, author, cover_url, total_pages, summary, genres, average_rating, publication_year)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (google_id, isbn13, title, author, cover, pages, summary, genres, rating, year))
+            INSERT INTO books (google_id, isbn13, title, author, cover_url, total_pages, summary, genres, average_rating, publication_year, olid)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (google_id, isbn13, title, author, cover, pages, summary, genres, rating, year, olid))
         book_id = cursor.lastrowid
     
     cursor.execute("SELECT id FROM user_books WHERE book_id = ?", (book_id,))
@@ -387,6 +362,7 @@ async def add_book(
     
     return "✅ Added"
 
+# --- NEW: Manual Add Routes ---
 @app.get("/add_manual", response_class=HTMLResponse)
 async def add_manual_page(request: Request):
     return templates.TemplateResponse("add_manual.html", {"request": request})
@@ -420,7 +396,6 @@ async def add_manual_post(
         book_id = existing_book['id']
     else:
         # 2. Create Book (Unique google_id required)
-        import uuid
         fake_google_id = f"manual_{uuid.uuid4().hex[:8]}"
         default_cover = "/static/placeholder.png"
         
