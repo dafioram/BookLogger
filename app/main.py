@@ -387,6 +387,68 @@ async def add_book(
     
     return "✅ Added"
 
+@app.get("/add_manual", response_class=HTMLResponse)
+async def add_manual_page(request: Request):
+    return templates.TemplateResponse("add_manual.html", {"request": request})
+
+@app.post("/add_manual")
+async def add_manual_post(
+    title: str = Form(...),
+    author: str = Form(...),
+    year: str = Form(""),
+    pages: int = Form(0),
+    isbn13: str = Form(None),
+    summary: str = Form(""),
+    # Inventory details
+    format_owned: str = Form("Physical"),
+    status: str = Form("Shelved")
+):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # 1. Check for Duplicates (ISBN or Title/Author)
+    existing_book = None
+    if isbn13:
+        cursor.execute("SELECT id FROM books WHERE isbn13 = ?", (isbn13,))
+        existing_book = cursor.fetchone()
+    
+    if not existing_book:
+        cursor.execute("SELECT id FROM books WHERE title = ? AND author = ?", (title, author))
+        existing_book = cursor.fetchone()
+
+    if existing_book:
+        book_id = existing_book['id']
+    else:
+        # 2. Create Book (Unique google_id required)
+        import uuid
+        fake_google_id = f"manual_{uuid.uuid4().hex[:8]}"
+        default_cover = "/static/placeholder.png"
+        
+        cursor.execute("""
+            INSERT INTO books (google_id, isbn13, title, author, publication_year, total_pages, summary, cover_url)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (fake_google_id, isbn13, title, author, year, pages, summary, default_cover))
+        book_id = cursor.lastrowid
+
+    # 3. Add to Inventory (user_books)
+    cursor.execute("SELECT id FROM user_books WHERE book_id = ?", (book_id,))
+    if not cursor.fetchone():
+        formats = [format_owned]
+        # Determine ownership based on format
+        is_owned = True
+        if format_owned in ["Libby Audiobook", "Libby eBook", "Libby Physical"]:
+            is_owned = False
+            
+        cursor.execute("""
+            INSERT INTO user_books (book_id, shelf_status, formats_owned, is_owned)
+            VALUES (?, ?, ?, ?)
+        """, (book_id, status, json.dumps(formats), is_owned))
+
+    conn.commit()
+    conn.close()
+    
+    return RedirectResponse(url=f"/book/{book_id}", status_code=303)
+
 @app.get("/book/{id}", response_class=HTMLResponse)
 async def book_detail(request: Request, id: int):
     conn = get_db_connection()
