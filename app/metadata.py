@@ -159,7 +159,9 @@ async def search_google(client, query, match_isbn=None):
             seen_ids.add(item["id"])
             
             vol = item.get("volumeInfo", {})
-            raw_cover = vol.get("imageLinks", {}).get("thumbnail", "")
+            # NEW CODE: Fallback to smallThumbnail if thumbnail is missing
+            image_links = vol.get("imageLinks", {})
+            raw_cover = image_links.get("thumbnail") or image_links.get("smallThumbnail", "")
             cover = raw_cover.replace("http://", "https://").replace("&edge=curl", "").replace("zoom=1", "zoom=0")
             if not cover: cover = "/static/placeholder.png"
 
