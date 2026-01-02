@@ -40,19 +40,19 @@ def init_db():
         total_pages INTEGER,
         summary TEXT,
         genres TEXT,
-        average_rating REAL
+        average_rating REAL,
+        content_score INTEGER DEFAULT 0  -- <--- NEW COLUMN
     )
     ''')
     
     # 2. User Inventory
-    # CHANGED: 'user_rating' -> 'effective_user_rating' to match main.py logic
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS user_books (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         book_id INTEGER NOT NULL,
         read_status TEXT DEFAULT 'Unread',
         shelf_status TEXT DEFAULT 'Shelved',
-        effective_user_rating REAL, -- NEW: Calculated average from log sessions
+        effective_user_rating REAL, -- Calculated average from log sessions
         is_owned BOOLEAN DEFAULT 0,
         formats_owned TEXT,
         inventory_notes TEXT,
@@ -75,7 +75,7 @@ def init_db():
         is_dnf BOOLEAN DEFAULT 0,
         pace TEXT,
         log_notes TEXT,
-        session_rating REAL,  -- NEW: The rating for this specific read
+        session_rating REAL,  -- The rating for this specific read
         FOREIGN KEY(user_book_id) REFERENCES user_books(id)
     )
     ''')

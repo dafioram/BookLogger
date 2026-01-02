@@ -1,8 +1,10 @@
 import httpx
 import asyncio
 import difflib
+import unicodedata
 
 # --- CONFIGURATION ---
+PREFER_OPEN_LIBRARY_COVERS = True 
 MATCH_THRESHOLD = 40  # Minimum 'Match Score' required to even be considered
 
 # --- HELPER FUNCTIONS ---
@@ -12,11 +14,25 @@ def is_isbn(query):
     return clean.isdigit() and len(clean) in [10, 13]
 
 def normalize_text(text):
-    """Simple text cleaner for comparisons."""
+    """
+    Robust text cleaner. 
+    1. Normalizes unicode characters (turns 'â€”' into simple text or removes it).
+    2. Removes punctuation but preserves spaces.
+    3. Collapses whitespace.
+    """
     if not text: return ""
-    return text.lower().strip().replace(":", "").replace("-", "")
+    
+    # unicode normalization (NFKD decomposes characters, e.g., é -> e + acute)
+    # .encode('ascii', 'ignore') throws away the non-ascii trash like 'â'
+    clean_ascii = unicodedata.normalize('NFKD', str(text)).encode('ascii', 'ignore').decode('utf-8')
+    
+    # Keep alphanumeric and spaces, drop everything else
+    cleaned = "".join(c for c in clean_ascii.lower() if c.isalnum() or c.isspace())
+    
+    # Collapse multiple spaces into one
+    return " ".join(cleaned.split())
 
-def calculate_match_score(book, query):
+def calculate_match_score(book, query, match_isbn=None):
     """
     PHASE 1: IDENTITY
     How well does this result match what the user asked for?
@@ -27,22 +43,41 @@ def calculate_match_score(book, query):
     t_norm = normalize_text(book.get('title', ''))
     a_norm = normalize_text(book.get('author', ''))
     
-    # 1. ISBN MATCH (The Golden Ticket)
+    # --- 1. THE "CHEAT CODE" (External ISBN Verification) ---
+    # If the caller passed an ISBN from their CSV, verify it immediately.
+    if match_isbn:
+        clean_target = str(match_isbn).replace("-", "").replace(" ", "")
+        book_isbn = str(book.get('isbn', '')).replace("-", "").replace(" ", "")
+        # If the CSV ISBN matches the API Result ISBN, it's a 100% match.
+        if clean_target and clean_target == book_isbn:
+            return 100
+
+    # --- 2. QUERY IS ISBN (The User searched by ISBN directly) ---
     if is_isbn(query):
         clean_q = query.replace("-", "").replace(" ", "")
-        book_isbn = str(book.get('isbn', '')).replace("-", "")
+        book_isbn = str(book.get('isbn', '')).replace("-", "").replace(" ", "")
         if clean_q == book_isbn:
-            return 100 # Perfect Match
+            return 100 
             
-    # 2. TITLE MATCHING
+    # --- 3. TITLE MATCHING ---
     if t_norm == q_norm:
         score += 60  # Exact Title Match
+        
+    # BIDIRECTIONAL SUBTITLE MATCH
+    # Case A: Query is short ("Dune"), Result is long ("Dune: Messiah")
+    elif t_norm.startswith(q_norm + " "):
+        score += 55 
+    # Case B: Query is long ("How Not To Invest: The Ideas..."), Result is short ("How Not To Invest")
+    elif q_norm.startswith(t_norm + " "):
+        score += 55
+        
     elif t_norm.startswith(q_norm) or q_norm.startswith(t_norm):
         score += 40  # Strong Partial Match
+        
     elif q_norm in t_norm:
         score += 20  # Weak Partial Match
         
-    # 3. AUTHOR MATCHING
+    # --- 4. AUTHOR MATCHING ---
     if a_norm and a_norm in q_norm:
         score += 30
     elif a_norm and q_norm in a_norm:
@@ -58,41 +93,41 @@ def calculate_content_score(book):
     """
     score = 0
     
-    # 1. Visuals (Heavy Weight)
+    # 1. Visuals
     if book.get('cover') and "placeholder" not in book['cover']:
-        score += 30  # Reduced slightly to make room for penalties
+        score += 30
     
-    # 2. Context (Heavy Weight)
+    # 2. Context
     summary = book.get('summary', '')
     if summary and len(summary) > 50:
         score += 30
     elif not summary:
-        score -= 10  # Penalty for being a "ghost" record
+        score -= 10
         
-    # 3. Metadata Basics (Medium Weight)
+    # 3. Metadata Basics
     author = book.get('author', 'Unknown')
     title = book.get('title', '')
     
-    # --- UPDATED "IDEA FACTORY" FIX ---
-    clean_title = title.lower().strip()
-    clean_author = author.lower().strip()
+    clean_title = normalize_text(title)
+    clean_author = normalize_text(author)
 
-    # Check if author is inside title OR title is inside author (Fuzzy Echo)
     if len(clean_author) > 3 and (clean_author in clean_title or clean_title in clean_author):
-        score -= 40  # Massive penalty for bad data (e.g. Author="Idea Factory")
+        score -= 40
     elif author != "Unknown":
         score += 10
 
     if book.get('year'):
         score += 10
         
-    # 4. Page Count Realism
+    # 4. PAGE COUNT REALISM (UPDATED)
     pages = book.get('pages', 0)
-    if pages > 0:
-        if pages < 50:
-            score -= 15  # Penalty: Likely a pamphlet/metadata fragment
-        else:
-            score += 5   # Reward: Standard book length
+    
+    if pages == 0:
+        score -= 50  # <--- NUCLEAR OPTION: Kill books with 0 pages
+    elif pages < 50:
+        score -= 15  # Pamphlet penalty
+    else:
+        score += 20  # <--- BOOST: Valid length books get a hefty bonus
     
     if book.get('isbn'):
         score += 5
@@ -100,7 +135,7 @@ def calculate_content_score(book):
     return max(0, min(score, 100))
 
 # --- SEARCH FUNCTIONS ---
-async def search_google(client, query):
+async def search_google(client, query, match_isbn=None):
     results = []
     
     if is_isbn(query):
@@ -148,22 +183,21 @@ async def search_google(client, query):
             }
             
             # --- CALCULATE SCORES ---
-            raw_match = calculate_match_score(book, query)
+            raw_match = calculate_match_score(book, query, match_isbn)
             raw_content = calculate_content_score(book)
             
-            # Weighted Score: Content has 50% voting power of Match
-            final_score = raw_match + (raw_content / 2)
+            final_score = raw_match + raw_content
             
             # --- UI OUTPUTS ---
             book['match_score'] = int(raw_match)
-            book['content_score'] = int(raw_content) # Keep internal for debug
-            book['rank_score'] = int(final_score)    # The total for your UI
-            book['score'] = final_score              # High precision for sorting
+            book['content_score'] = int(raw_content)
+            book['rank_score'] = int(final_score)
+            book['score'] = final_score
             
             results.append(book)
     return results
 
-async def search_open_library(client, query):
+async def search_open_library(client, query, match_isbn=None):
     results = []
     try:
         resp = await client.get(f"https://openlibrary.org/search.json?q={query}&limit=20")
@@ -194,12 +228,11 @@ async def search_open_library(client, query):
                 }
                 
                 # --- CALCULATE SCORES ---
-                raw_match = calculate_match_score(book, query)
+                raw_match = calculate_match_score(book, query, match_isbn)
                 raw_content = calculate_content_score(book)
                 
-                final_score = raw_match + (raw_content / 2)
+                final_score = raw_match + raw_content
                 
-                # --- UI OUTPUTS ---
                 book['match_score'] = int(raw_match)
                 book['content_score'] = int(raw_content)
                 book['rank_score'] = int(final_score)
@@ -212,21 +245,20 @@ async def search_open_library(client, query):
     return results
 
 # --- AGGREGATOR ---
-async def search_aggregated(query):
+async def search_aggregated(query, match_isbn=None):
     async with httpx.AsyncClient() as client:
-        google_task = search_google(client, query)
-        ol_task = search_open_library(client, query)
+        # We now pass match_isbn down to the search functions
+        google_task = search_google(client, query, match_isbn)
+        ol_task = search_open_library(client, query, match_isbn)
         
         g_results, ol_results = await asyncio.gather(google_task, ol_task)
         
     combined = g_results + ol_results
     
-    # 1. FILTER: The Gatekeeper
+    # 1. FILTER
     filtered = [b for b in combined if b['match_score'] >= MATCH_THRESHOLD]
     
-    # 2. SORT: The Ranker
-    # CRITICAL FIX: Sort by the calculated 'score', NOT the tuple.
-    # The tuple sort (match, content) ignored our weighting logic!
+    # 2. SORT
     filtered.sort(key=lambda x: x['score'], reverse=True)
     
     return filtered

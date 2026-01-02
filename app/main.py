@@ -8,7 +8,7 @@ import httpx
 import json
 import math
 import os
-import uuid # <-- Added for Manual ID generation
+import uuid
 from datetime import date
 from .database import init_db, get_db_connection, backup_database
 from .metadata import search_aggregated
@@ -304,7 +304,6 @@ async def library(request: Request, q: str = "", sort: str = "title_asc"):
 async def search_page(request: Request):
     return templates.TemplateResponse("search.html", {"request": request})
 
-# --- NEW: Aggregated Search Route ---
 @app.post("/api/search")
 async def search_api(request: Request, query: str = Form(...)):
     if not query: return ""
@@ -314,6 +313,7 @@ async def search_api(request: Request, query: str = Form(...)):
             
     return templates.TemplateResponse("partials/search_row.html", {"request": request, "results": results})
 
+# --- UPDATED ADD BOOK ROUTE ---
 @app.post("/api/add_book")
 async def add_book(
     google_id: str = Form(...), 
@@ -322,11 +322,12 @@ async def add_book(
     cover: str = Form(...),
     pages: int = Form(0),
     summary: str = Form(""),
-    genres: str = Form(""),       
-    rating: float = Form(0.0),    
+    genres: str = Form(""),        
+    rating: float = Form(0.0),     
     year: str = Form(""),
     isbn13: str = Form(None),
-    olid: str = Form(None) # <-- Added OLID support
+    olid: str = Form(None),
+    content_score: int = Form(0)  # <--- Added Field
 ):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -337,18 +338,18 @@ async def add_book(
     
     if row:
         book_id = row['id']
-        # Update existing record
+        # Update existing record (added content_score)
         cursor.execute("""
             UPDATE books 
-            SET publication_year = ?, genres = ?, average_rating = ?, summary = ?, isbn13 = ?, olid = ?
+            SET publication_year = ?, genres = ?, average_rating = ?, summary = ?, isbn13 = ?, olid = ?, content_score = ?
             WHERE id = ?
-        """, (year, genres, rating, summary, isbn13, olid, book_id))
+        """, (year, genres, rating, summary, isbn13, olid, content_score, book_id))
     else:
-        # Insert new record
+        # Insert new record (added content_score)
         cursor.execute("""
-            INSERT INTO books (google_id, isbn13, title, author, cover_url, total_pages, summary, genres, average_rating, publication_year, olid)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (google_id, isbn13, title, author, cover, pages, summary, genres, rating, year, olid))
+            INSERT INTO books (google_id, isbn13, title, author, cover_url, total_pages, summary, genres, average_rating, publication_year, olid, content_score)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (google_id, isbn13, title, author, cover, pages, summary, genres, rating, year, olid, content_score))
         book_id = cursor.lastrowid
     
     cursor.execute("SELECT id FROM user_books WHERE book_id = ?", (book_id,))
@@ -362,7 +363,7 @@ async def add_book(
     
     return "✅ Added"
 
-# --- NEW: Manual Add Routes ---
+# --- Manual Add Routes ---
 @app.get("/add_manual", response_class=HTMLResponse)
 async def add_manual_page(request: Request):
     return templates.TemplateResponse("add_manual.html", {"request": request})
@@ -534,14 +535,13 @@ async def add_log(
     else:
         conn.execute("UPDATE user_books SET read_status = 'DNF' WHERE id = ? AND read_status != 'Read'", (id,))
     
-    # NEW: Recalculate Rating Average
+    # Recalculate Rating Average
     recalculate_book_rating(conn, id)
     
     conn.commit()
     conn.close()
     return RedirectResponse(url=f"/book/{id}", status_code=303)
 
-# --- AUTHOR ROUTE ---
 @app.get("/author/{name}", response_class=HTMLResponse)
 async def author_page(request: Request, name: str):
     conn = get_db_connection()
@@ -575,13 +575,7 @@ async def get_cover_options(request: Request, id: int):
     
     if not book: return "Book not found"
 
-    # --- THE FIX: Widen the Search ---
-    # OLD: query = book['isbn13'] if book['isbn13'] else f"{book['title']} {book['author']}"
-    # This was too strict. If OL didn't have that specific ISBN, we got 0 results.
-    
-    # NEW: Always search by Title + Author.
-    # This finds ALL editions (Paperback, Hardcover, Kindle) across both Google and Open Library.
-    # Our 'calculate_match_score' in metadata.py will ensure they are actually the right book.
+    # Always search by Title + Author to find ALL editions
     query = f"{book['title']} {book['author']}"
     
     # Reuse your existing smart search
@@ -646,7 +640,7 @@ async def update_log(
     
     row = conn.execute("SELECT user_book_id FROM reading_logs WHERE id = ?", (log_id,)).fetchone()
     
-    # NEW: Recalculate Rating
+    # Recalculate Rating
     if row:
         recalculate_book_rating(conn, row['user_book_id'])
 
@@ -662,7 +656,7 @@ async def delete_log(log_id: int):
         book_id = row['user_book_id']
         conn.execute("DELETE FROM reading_logs WHERE id = ?", (log_id,))
         
-        # NEW: Recalculate Rating after delete
+        # Recalculate Rating after delete
         recalculate_book_rating(conn, book_id)
         
         conn.commit()

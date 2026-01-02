@@ -21,9 +21,6 @@ DEFAULT_CSV = "Books Read.csv"
 FAILURE_FILE = "import_failures.csv"
 DB_PATH = "data/library.db"
 
-# Note: We now trust metadata.py's threshold, but we can set a failsafe here if needed.
-# Since metadata.py filters < 40, anything returned is "valid" by definition.
-
 SERVICE_DEFAULTS = {
     "Audible": ("Audible", False),
     "Kindle": ("Kindle", False),
@@ -31,7 +28,7 @@ SERVICE_DEFAULTS = {
     "Paperback": ("Physical", False),
     "Hardcover": ("Physical", False),
     "Kindle Unlimited": ("Kindle", True), 
-    "Libby": ("Libby Audiobook", True),   
+    "Libby": ("Libby Audiobook", True),    
     "Library": ("Physical", True),
     "Spotify": ("Audible", True),
 }
@@ -155,26 +152,28 @@ def run_import():
             if book_row:
                 # EXISTING BOOK
                 if is_skipped:
-                     print(f"  -> [SKIP] User flagged to skip (Book exists in DB).")
-                     row['Error_Reason'] = "User Skipped (Exists in DB)"
-                     row['Found_Title'] = book_row['title']
-                     failed_rows.append(row)
-                     failure_count += 1
-                     continue
+                      print(f"  -> [SKIP] User flagged to skip (Book exists in DB).")
+                      row['Error_Reason'] = "User Skipped (Exists in DB)"
+                      row['Found_Title'] = book_row['title']
+                      failed_rows.append(row)
+                      failure_count += 1
+                      continue
 
                 book_id = book_row['id']
                 total_pages = book_row['total_pages'] or 0
                 print(f"  -> [MATCH] Existing DB ID {book_id}: '{book_row['title']}'")
             else:
-                # --- NEW BOOK LOGIC ---
-                search_query = title
-                if csv_isbn:
-                    search_query = f"isbn:{csv_isbn}"
-                else:
-                    search_query = f"{title} {author}"
-
-                # Run Search (Now trusts metadata.py's scoring)
-                candidates = asyncio.run(search_aggregated(search_query))
+                # --- NEW BOOK LOGIC (UPDATED) ---
+                
+                # STRATEGY CHANGE: 
+                # Instead of searching strictly by "isbn:...", we search by Title + Author.
+                # Why? This casts a wider net (20 results) instead of just 1.
+                # Then we pass the ISBN to 'match_isbn' so metadata.py can pick the perfect winner
+                # from that list of 20, even if the API result title is slightly weird.
+                search_query = f"{title} {author}".strip()
+                
+                # Run Search with the ISBN Validator
+                candidates = asyncio.run(search_aggregated(search_query, match_isbn=csv_isbn))
                 
                 best_match = None
                 if candidates:
@@ -201,26 +200,29 @@ def run_import():
                     failure_count += 1
                     continue
 
-                # --- INSERT BOOK (This is the part that was missing!) ---
+                # --- INSERT BOOK ---
                 final_subtitle = csv_subtitle
                 final_isbn = csv_isbn if csv_isbn else best_match['isbn']
                 final_olid = csv_olid if csv_olid else best_match['olid']
                 
+                # Use .get() specifically for content_score since older searches might not have it
+                content_score = best_match.get('content_score', 0)
+
                 cursor.execute("""
-                    INSERT INTO books (google_id, isbn13, asin, olid, title, subtitle, author, publication_year, cover_url, total_pages, summary, genres, average_rating)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO books (google_id, isbn13, asin, olid, title, subtitle, author, publication_year, cover_url, total_pages, summary, genres, average_rating, content_score)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     best_match['source_id'], final_isbn, csv_asin, final_olid,
                     best_match['title'], final_subtitle, best_match['author'], 
                     best_match['year'], best_match['cover'], best_match['pages'], 
-                    best_match['summary'], best_match['genres'], best_match['rating']
+                    best_match['summary'], best_match['genres'], best_match['rating'],
+                    content_score
                 ))
                 book_id = cursor.lastrowid
                 total_pages = best_match['pages']
                 time.sleep(0.1) 
 
             # --- 4. CREATE USER_BOOKS ---
-            # If book_id is None here, it means the logic above failed to set it.
             if book_id is None:
                 print("CRITICAL ERROR: book_id is None. Skipping row.")
                 continue
