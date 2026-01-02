@@ -242,11 +242,11 @@ def run_import():
             if ub_row:
                 user_book_id = ub_row['id']
                 if user_rating:
-                    cursor.execute("UPDATE user_books SET user_rating = ? WHERE id = ?", (user_rating, user_book_id))
+                    cursor.execute("UPDATE user_books SET effective_user_rating = ? WHERE id = ?", (user_rating, user_book_id))
             else:
                 formats = [format_consumed]
                 cursor.execute("""
-                    INSERT INTO user_books (book_id, read_status, shelf_status, is_owned, formats_owned, user_rating)
+                    INSERT INTO user_books (book_id, read_status, shelf_status, is_owned, formats_owned, effective_user_rating)
                     VALUES (?, 'Read', 'Shelved', ?, ?, ?)
                 """, (book_id, is_owned, json.dumps(formats), user_rating))
                 user_book_id = cursor.lastrowid

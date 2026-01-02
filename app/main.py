@@ -48,6 +48,27 @@ def process_book_row(row):
         
     return r
 
+def recalculate_book_rating(conn, user_book_id):
+    """
+    Calculates the average of all non-null session_ratings for a book
+    and updates the user_books.effective_user_rating column.
+    """
+    # 1. Get the average of valid ratings
+    row = conn.execute("""
+        SELECT AVG(session_rating) as avg_val 
+        FROM reading_logs 
+        WHERE user_book_id = ? AND session_rating IS NOT NULL AND session_rating > 0
+    """, (user_book_id,)).fetchone()
+    
+    new_rating = row['avg_val'] if row['avg_val'] else None
+    
+    # 2. Update the parent book record
+    conn.execute("""
+        UPDATE user_books 
+        SET effective_user_rating = ? 
+        WHERE id = ?
+    """, (new_rating, user_book_id))
+
 # --- CUSTOM ERROR HANDLERS ---
 @app.exception_handler(404)
 async def custom_404_handler(request: Request, exc: StarletteHTTPException):
@@ -76,7 +97,6 @@ async def dashboard(request: Request):
     library_count = conn.execute("SELECT COUNT(*) FROM user_books").fetchone()[0]
     
     # 3. On Deck (List + Count)
-    # Note: We fetch cover_path too so process_book_row works
     on_deck_rows = conn.execute("""
         SELECT ub.id, b.title, b.cover_url, b.cover_path
         FROM user_books ub 
@@ -151,7 +171,7 @@ async def stats_page(request: Request, year: int = None):
         data_hours[idx] = round(r['hours'], 1)
         data_pages[idx] = r['pages']
 
-    # 3. Format Breakdown (Pie Chart) -- NEW
+    # 3. Format Breakdown (Pie Chart)
     format_data = conn.execute("""
         SELECT format_consumed, COUNT(*) as count
         FROM reading_logs
@@ -162,7 +182,7 @@ async def stats_page(request: Request, year: int = None):
     format_labels = [row['format_consumed'] for row in format_data]
     format_counts = [row['count'] for row in format_data]
 
-    # 4. Chronological Log List -- NEW
+    # 4. Chronological Log List
     logs_rows = conn.execute("""
         SELECT 
             b.id as book_id,
@@ -170,7 +190,7 @@ async def stats_page(request: Request, year: int = None):
             b.author, 
             b.cover_url, 
             b.cover_path,
-            ub.user_rating,
+            ub.effective_user_rating as user_rating, -- UPDATED: Use the cached rating
             rl.date_finished, 
             rl.format_consumed, 
             rl.is_borrowed,
@@ -208,10 +228,39 @@ async def stats_page(request: Request, year: int = None):
         "logs": logs
     })
 
+@app.get("/top_books", response_class=HTMLResponse)
+async def top_books_page(request: Request):
+    conn = get_db_connection()
+    
+    # EFFICIENT QUERY: Relies on the denormalized 'effective_user_rating' column
+    query = """
+        SELECT 
+            b.id, b.title, b.author, b.cover_url, b.cover_path,
+            ub.effective_user_rating
+        FROM user_books ub
+        JOIN books b ON ub.book_id = b.id
+        WHERE ub.effective_user_rating IS NOT NULL
+        ORDER BY ub.effective_user_rating DESC
+        LIMIT 20
+    """
+    
+    rows = conn.execute(query).fetchall()
+    conn.close()
+    
+    books = []
+    for r in rows:
+        book = dict(r)
+        if book.get('cover_path'): book['cover_url'] = book['cover_path']
+        # Round it for display
+        if book['effective_user_rating']:
+            book['effective_user_rating'] = round(book['effective_user_rating'], 1)
+        books.append(book)
+
+    return templates.TemplateResponse("top_books.html", {"request": request, "books": books})
+
 @app.get("/library", response_class=HTMLResponse)
 async def library(request: Request, q: str = ""):
     conn = get_db_connection()
-    # ADDED cover_path to query
     query = """
         SELECT ub.id, b.title, b.author, b.cover_url, b.cover_path, ub.read_status, ub.shelf_status, ub.formats_owned, ub.is_owned
         FROM user_books ub
@@ -302,7 +351,6 @@ async def add_book(
             WHERE id = ?
         """, (year, genres, rating, summary, isbn13, book_id))
     else:
-        # Note: cover_path defaults to NULL automatically
         cursor.execute("""
             INSERT INTO books (google_id, isbn13, title, author, cover_url, total_pages, summary, genres, average_rating, publication_year)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -335,16 +383,11 @@ async def book_detail(request: Request, id: int):
         
     logs = conn.execute("SELECT * FROM reading_logs WHERE user_book_id = ? ORDER BY date_finished DESC", (id,)).fetchall()
     
-    # --- NEW: Calculate Average Rating ---
-    avg_row = conn.execute("""
-        SELECT AVG(session_rating) as avg_rating 
-        FROM reading_logs 
-        WHERE user_book_id = ? AND session_rating IS NOT NULL
-    """, (id,)).fetchone()
-    
-    calculated_rating = None
-    if avg_row and avg_row['avg_rating']:
-        calculated_rating = round(avg_row['avg_rating'], 1)
+    # Calculate Rating for display
+    # Since we are using the 'sync' approach, we can use the value from the book row
+    calculated_rating = book.get('effective_user_rating')
+    if calculated_rating:
+        calculated_rating = round(calculated_rating, 1)
 
     conn.close()
     
@@ -353,7 +396,7 @@ async def book_detail(request: Request, id: int):
         "book": book, 
         "logs": logs,
         "formats_owned": book['formats'],
-        "calculated_rating": calculated_rating # <-- Pass this to template
+        "calculated_rating": calculated_rating 
     })
 
 @app.post("/book/{id}/delete")
@@ -371,7 +414,6 @@ async def update_inventory(
     id: int, 
     shelf_status: str = Form(...),
     inventory_notes: str = Form(""),
-    # REMOVED: user_rating argument
     # Standard
     physical: str = Form(None),
     kindle: str = Form(None),
@@ -402,7 +444,6 @@ async def update_inventory(
     
     conn = get_db_connection()
     
-    # REMOVED: user_rating update logic
     conn.execute("""
         UPDATE user_books 
         SET shelf_status = ?, inventory_notes = ?, formats_owned = ?, is_owned = ?
@@ -424,7 +465,7 @@ async def add_log(
     notes: str = Form(""), 
     is_dnf: bool = Form(False),
     is_borrowed: bool = Form(False),
-    session_rating: float = Form(None) # <-- NEW ARGUMENT
+    session_rating: float = Form(None)
 ):
     conn = get_db_connection()
     conn.execute("""
@@ -437,6 +478,9 @@ async def add_log(
     else:
         conn.execute("UPDATE user_books SET read_status = 'DNF' WHERE id = ? AND read_status != 'Read'", (id,))
     
+    # NEW: Recalculate Rating Average
+    recalculate_book_rating(conn, id)
+    
     conn.commit()
     conn.close()
     return RedirectResponse(url=f"/book/{id}", status_code=303)
@@ -445,7 +489,6 @@ async def add_log(
 @app.get("/author/{name}", response_class=HTMLResponse)
 async def author_page(request: Request, name: str):
     conn = get_db_connection()
-    # ADDED cover_path to query
     query = """
         SELECT ub.id, b.title, b.author, b.cover_url, b.cover_path, ub.read_status, ub.shelf_status, ub.formats_owned, ub.is_owned
         FROM user_books ub
@@ -485,7 +528,7 @@ async def update_log(
     notes: str = Form(""), 
     is_dnf: bool = Form(False),
     is_borrowed: bool = Form(False),
-    session_rating: float = Form(None) # <-- NEW ARGUMENT
+    session_rating: float = Form(None)
 ):
     conn = get_db_connection()
     conn.execute("""
@@ -495,6 +538,11 @@ async def update_log(
     """, (date_finished, hours, format_consumed, pace, notes, is_dnf, is_borrowed, session_rating, log_id))
     
     row = conn.execute("SELECT user_book_id FROM reading_logs WHERE id = ?", (log_id,)).fetchone()
+    
+    # NEW: Recalculate Rating
+    if row:
+        recalculate_book_rating(conn, row['user_book_id'])
+
     conn.commit()
     conn.close()
     return RedirectResponse(url=f"/book/{row['user_book_id']}", status_code=303)
@@ -506,6 +554,10 @@ async def delete_log(log_id: int):
     if row:
         book_id = row['user_book_id']
         conn.execute("DELETE FROM reading_logs WHERE id = ?", (log_id,))
+        
+        # NEW: Recalculate Rating after delete
+        recalculate_book_rating(conn, book_id)
+        
         conn.commit()
         conn.close()
         return RedirectResponse(url=f"/book/{book_id}", status_code=303)

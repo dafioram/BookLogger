@@ -19,14 +19,13 @@ def init_db():
     cursor.execute("PRAGMA journal_mode=WAL;")
     
     # 1. BOOKS (Reference)
-    # ADDED: subtitle, series_name, series_index, publisher, language
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS books (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         google_id TEXT UNIQUE,
         isbn13 TEXT,
-        asin TEXT,              -- NEW: Amazon ID
-        olid TEXT,              -- NEW: Open Library ID
+        asin TEXT,              -- Amazon ID
+        olid TEXT,              -- Open Library ID
         goodreads_id TEXT,
         title TEXT NOT NULL,
         subtitle TEXT,
@@ -46,19 +45,19 @@ def init_db():
     ''')
     
     # 2. User Inventory
-    # ADDED: user_rating, acquired_source, acquired_date
+    # CHANGED: 'user_rating' -> 'effective_user_rating' to match main.py logic
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS user_books (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         book_id INTEGER NOT NULL,
         read_status TEXT DEFAULT 'Unread',
         shelf_status TEXT DEFAULT 'Shelved',
-        user_rating REAL,       -- NEW (Your personal 1-5 star rating)
+        effective_user_rating REAL, -- NEW: Calculated average from log sessions
         is_owned BOOLEAN DEFAULT 0,
         formats_owned TEXT,
         inventory_notes TEXT,
-        acquired_source TEXT,   -- NEW (e.g., "Amazon", "Gift", "Used Bookstore")
-        acquired_date DATE,     -- NEW
+        acquired_source TEXT,   -- e.g., "Amazon", "Gift", "Used Bookstore"
+        acquired_date DATE,     
         date_added DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(book_id) REFERENCES books(id)
     )
@@ -76,7 +75,7 @@ def init_db():
         is_dnf BOOLEAN DEFAULT 0,
         pace TEXT,
         log_notes TEXT,
-        session_rating REAL,  -- <-- NEW COLUMN
+        session_rating REAL,  -- NEW: The rating for this specific read
         FOREIGN KEY(user_book_id) REFERENCES user_books(id)
     )
     ''')
