@@ -259,26 +259,45 @@ async def top_books_page(request: Request):
     return templates.TemplateResponse("top_books.html", {"request": request, "books": books})
 
 @app.get("/library", response_class=HTMLResponse)
-async def library(request: Request, q: str = ""):
+async def library(request: Request, q: str = "", sort: str = "title_asc"): # <-- Default changed here
     conn = get_db_connection()
+    
     query = """
-        SELECT ub.id, b.title, b.author, b.cover_url, b.cover_path, ub.read_status, ub.shelf_status, ub.formats_owned, ub.is_owned
+        SELECT ub.id, b.title, b.author, b.cover_url, b.cover_path, 
+               ub.read_status, ub.shelf_status, ub.formats_owned, ub.is_owned, 
+               ub.effective_user_rating
         FROM user_books ub
         JOIN books b ON ub.book_id = b.id
     """
     params = []
+    
     if q:
         query += " WHERE b.title LIKE ? OR b.author LIKE ?"
         params = [f"%{q}%", f"%{q}%"]
     
-    query += " ORDER BY ub.date_added DESC"
+    # Sorting Logic
+    if sort == "date_desc":
+        query += " ORDER BY ub.date_added DESC"
+    elif sort == "author_asc":
+        query += " ORDER BY b.author ASC"
+    elif sort == "rating_desc":
+        query += " ORDER BY ub.effective_user_rating DESC"
+    else:
+        # Default: Title (A-Z) - This catches 'title_asc' or any invalid sort param
+        # Use 'LOWER(b.title)' if you want case-insensitive sorting (recommended)
+        query += " ORDER BY b.title ASC" 
+
     books_rows = conn.execute(query, params).fetchall()
     conn.close()
     
-    # Apply Helper Logic
     books_data = [process_book_row(r) for r in books_rows]
 
-    return templates.TemplateResponse("library.html", {"request": request, "books": books_data, "query": q})
+    return templates.TemplateResponse("library.html", {
+        "request": request, 
+        "books": books_data, 
+        "query": q, 
+        "sort": sort 
+    })
 
 @app.get("/search", response_class=HTMLResponse)
 async def search_page(request: Request):
