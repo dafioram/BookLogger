@@ -11,7 +11,7 @@ import os
 import uuid # <-- Added for Manual ID generation
 from datetime import date
 from .database import init_db, get_db_connection, backup_database
-from .metadata import search_aggregated # <-- Added for Search Aggregation
+from .metadata import search_aggregated
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -564,6 +564,51 @@ async def author_page(request: Request, name: str):
         "books": books_data, 
         "author_name": name
     })
+
+# --- COVER SWAPPER ROUTES ---
+
+@app.get("/book/{id}/cover_options", response_class=HTMLResponse)
+async def get_cover_options(request: Request, id: int):
+    conn = get_db_connection()
+    book = conn.execute("SELECT title, author, isbn13 FROM books WHERE id = ?", (id,)).fetchone()
+    conn.close()
+    
+    if not book: return "Book not found"
+
+    # 1. Search using ISBN (best) or Title
+    query = book['isbn13'] if book['isbn13'] else f"{book['title']} {book['author']}"
+    
+    # 2. Reuse your existing smart search
+    results = await search_aggregated(query)
+    
+    # 3. Filter down to just unique, valid images
+    # We use a set to dedup URLs
+    unique_covers = []
+    seen_urls = set()
+    
+    for r in results:
+        url = r.get('cover')
+        if url and "placeholder" not in url and url not in seen_urls:
+            unique_covers.append(url)
+            seen_urls.add(url)
+            
+    return templates.TemplateResponse("partials/cover_options.html", {
+        "request": request, 
+        "book_id": id, 
+        "covers": unique_covers
+    })
+
+@app.post("/book/{id}/set_cover")
+async def set_cover(id: int, new_cover_url: str = Form(...)):
+    conn = get_db_connection()
+    
+    # Update the book record
+    conn.execute("UPDATE books SET cover_url = ?, cover_path = NULL WHERE id = ?", (new_cover_url, id))
+    conn.commit()
+    conn.close()
+    
+    # Refresh the page to show the new look
+    return RedirectResponse(url=f"/book/{id}", status_code=303)
 
 # --- LOG MANAGEMENT ---
 @app.get("/log/{log_id}/edit", response_class=HTMLResponse)

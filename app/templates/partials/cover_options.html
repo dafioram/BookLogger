@@ -1,0 +1,21 @@
+<div class="mt-4 p-4 bg-gray-50 border border-gray-200 rounded-lg animate-fade-in">
+    <h3 class="text-sm font-bold text-gray-500 uppercase mb-3">Select a new cover:</h3>
+    
+    {% if covers %}
+        <div class="grid grid-cols-4 md:grid-cols-6 gap-4">
+            {% for url in covers %}
+            <form action="/book/{{ book_id}}/set_cover" method="post" class="cursor-pointer group relative">
+                <input type="hidden" name="new_cover_url" value="{{ url }}">
+                
+                <button type="submit" class="w-full h-full block">
+                    <img src="{{ url }}" class="w-full h-auto rounded shadow-sm hover:ring-4 ring-blue-500 transition border border-gray-300">
+                </button>
+            </form>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p class="text-sm text-gray-500 italic">No alternative covers found.</p>
+    {% endif %}
+    
+    <button onclick="this.closest('div').remove()" class="mt-4 text-xs text-red-500 underline hover:text-red-700">Cancel</button>
+</div>

@@ -5,8 +5,22 @@
     
     <div class="flex flex-col md:flex-row gap-10 mb-10">
         
-        <div class="flex-shrink-0 mx-auto md:mx-0">
-            <img src="{{ book.cover_url }}" class="w-72 rounded-lg shadow-xl">
+        <div class="w-full md:w-1/3 flex flex-col items-center flex-shrink-0">
+            
+            <div class="w-48 md:w-64 shadow-xl rounded-lg overflow-hidden mb-6 relative group">
+                <img src="{{ book.cover_url }}" class="w-full h-auto object-cover">
+            </div>
+
+            <button 
+                onclick="document.getElementById('cover-modal').classList.remove('hidden')"
+                hx-get="/book/{{ book.id }}/cover_options" 
+                hx-target="#modal-content" 
+                hx-indicator="#modal-loading"
+                class="text-xs font-bold text-blue-600 hover:text-blue-800 hover:underline flex items-center justify-center gap-1 mx-auto mb-2"
+            >
+                <span>🔄 Find Better Cover</span>
+            </button>
+
         </div>
 
         <div class="flex-grow text-center md:text-left flex flex-col">
@@ -193,24 +207,24 @@
                         <p class="text-gray-600 text-sm mt-1 italic">"{{ log.log_notes }}"</p>
                         {% endif %}
                     </div>
-					<div class="mt-2 md:mt-0 flex items-center space-x-4">
-						
-						{% if log.session_rating %}
-							 <span class="text-yellow-600 font-bold text-sm bg-yellow-50 px-2 py-1 rounded border border-yellow-100">
-								★ {{ log.session_rating }}
-							 </span>
-						{% endif %}
+                    <div class="mt-2 md:mt-0 flex items-center space-x-4">
+                        
+                        {% if log.session_rating %}
+                             <span class="text-yellow-600 font-bold text-sm bg-yellow-50 px-2 py-1 rounded border border-yellow-100">
+                                ★ {{ log.session_rating }}
+                             </span>
+                        {% endif %}
 
-						 {% if log.is_dnf %}
-							<span class="text-red-600 font-bold text-sm bg-red-50 px-2 py-1 rounded border border-red-100">DNF</span>
-						{% else %}
-							 <span class="font-bold text-slate-700">{{ log.hours_read }} hrs</span>
-						{% endif %}
-						
-						<a href="/log/{{ log.id }}/edit" class="text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1 rounded text-xs font-bold uppercase transition">
-							Edit
-						</a>
-					</div>
+                         {% if log.is_dnf %}
+                            <span class="text-red-600 font-bold text-sm bg-red-50 px-2 py-1 rounded border border-red-100">DNF</span>
+                        {% else %}
+                             <span class="font-bold text-slate-700">{{ log.hours_read }} hrs</span>
+                        {% endif %}
+                        
+                        <a href="/log/{{ log.id }}/edit" class="text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1 rounded text-xs font-bold uppercase transition">
+                            Edit
+                        </a>
+                    </div>
                 </div>
                 {% else %}
                 <div class="text-gray-500 text-center py-8 italic bg-gray-50 rounded border border-gray-100">
@@ -219,6 +233,40 @@
                 {% endfor %}
             </div>
 
+        </div>
+    </div>
+</div>
+
+<div id="cover-modal" class="hidden fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    
+    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+        
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onclick="document.getElementById('cover-modal').classList.add('hidden')"></div>
+
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+        <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full">
+            
+            <div class="bg-gray-50 px-4 py-3 border-b border-gray-200 flex justify-between items-center">
+                <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">Select a New Cover</h3>
+                <button onclick="document.getElementById('cover-modal').classList.add('hidden')" class="text-gray-400 hover:text-gray-500 focus:outline-none">
+                    <span class="text-2xl">&times;</span>
+                </button>
+            </div>
+
+            <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4 min-h-[300px]">
+                
+                <div id="modal-loading" class="htmx-indicator flex flex-col items-center justify-center h-48 space-y-4">
+                    <svg class="animate-spin h-10 w-10 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <p class="text-gray-500 font-medium">Searching Google & Open Library...</p>
+                </div>
+
+                <div id="modal-content"></div>
+            </div>
+            
         </div>
     </div>
 </div>
