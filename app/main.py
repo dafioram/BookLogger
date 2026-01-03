@@ -12,6 +12,7 @@ import uuid
 from datetime import date
 from .database import init_db, get_db_connection, backup_database
 from .metadata import search_aggregated
+import urllib.parse
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -39,6 +40,9 @@ def format_runtime(mins):
 
 templates.env.filters["format_minutes"] = format_minutes
 templates.env.filters["format_runtime"] = format_runtime
+
+import urllib.parse
+templates.env.filters["urlencode"] = urllib.parse.quote_plus
 
 def process_book_row(row):
     """
@@ -389,14 +393,14 @@ async def add_manual_post(
     pages: int = Form(0),
     audio_minutes: int = Form(0),
     isbn13: str = Form(None),
-    asin: str = Form(None),         # <--- NEW
+    asin: str = Form(None),         
     goodreads_id: str = Form(None),
-    olid: str = Form(None),         # <--- NEW
+    olid: str = Form(None),         
     publisher: str = Form(""),
     series_name: str = Form(""),
     series_index: float = Form(None),
     language: str = Form("en"),
-    genres: str = Form(""),         # <--- NEW
+    genres: str = Form(""),         
     summary: str = Form(""),
     cover_url: str = Form(None),
     
@@ -655,6 +659,32 @@ async def author_page(request: Request, name: str):
         "author_name": name
     })
 
+# --- NEW PROXY ROUTE (Placed here) ---
+@app.get("/api/cover_proxy")
+async def cover_proxy(url: str):
+    # 1. Validation: Don't process empty or local URLs
+    if not url: return Response(status_code=404)
+    if url.startswith("/static"):
+        return RedirectResponse(url)
+
+    try:
+        # 2. The Spoof: Mimic a real browser so we don't get blocked
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        }
+        # 3. The Fetch: Server downloads image
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            resp = await client.get(url, headers=headers)
+            
+            if resp.status_code != 200:
+                return RedirectResponse("/static/placeholder.png")
+                
+            # 4. The Handoff: Stream image back to browser
+            return Response(content=resp.content, media_type=resp.headers.get("content-type", "image/jpeg"))
+    except:
+        return RedirectResponse("/static/placeholder.png")
+
+# --- COVER SWAPPER ROUTE ---
 @app.get("/book/{id}/cover_options", response_class=HTMLResponse)
 async def get_cover_options(request: Request, id: int):
     conn = get_db_connection()
