@@ -26,7 +26,23 @@
         </div>
 
         <div class="flex-grow text-center md:text-left flex flex-col">
-            <h1 class="text-5xl font-bold text-slate-900 mb-2 leading-tight">{{ book.title }}</h1>
+            
+            {% if book.series_name %}
+            <div class="mb-2">
+                <span class="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded uppercase tracking-wide">
+                    {{ book.series_name }} {% if book.series_index %}#{{ book.series_index }}{% endif %}
+                </span>
+            </div>
+            {% endif %}
+
+            <h1 class="text-4xl md:text-5xl font-bold text-slate-900 mb-1 leading-tight">{{ book.title }}</h1>
+            
+            {% if book.subtitle %}
+            <h2 class="text-xl text-slate-500 font-medium mb-4 italic">{{ book.subtitle }}</h2>
+            {% else %}
+            <div class="mb-4"></div>
+            {% endif %}
+
             <a href="/author/{{ book.author }}" class="text-2xl text-blue-600 hover:text-blue-800 hover:underline transition mb-6 block">
                 {{ book.author }}
             </a>
@@ -50,10 +66,19 @@
                 </div>
             </div>
 
-            <div class="mt-auto pt-4 border-t border-gray-100 flex flex-wrap gap-6 text-sm text-slate-500 font-bold uppercase tracking-wider justify-center md:justify-start">
+            <div class="mt-auto pt-4 border-t border-gray-100 flex flex-wrap gap-4 md:gap-6 text-sm text-slate-500 font-bold uppercase tracking-wider justify-center md:justify-start">
                 <span class="flex items-center"><span class="text-slate-400 mr-2">Year:</span> {{ book.publication_year }}</span>
                 <span class="flex items-center"><span class="text-slate-400 mr-2">Length:</span> {{ book.total_pages }} Pages</span>
+                
+                {% if book.total_audio_minutes %}
+                <span class="flex items-center text-blue-600">
+                    <span class="text-slate-400 mr-2">Audio:</span> {{ book.total_audio_minutes | format_runtime }}
+                </span>
+                {% endif %}
+                
+                {% if book.genres %}
                 <span class="flex items-center"><span class="text-slate-400 mr-2">Genre:</span> {{ book.genres }}</span>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -240,24 +265,17 @@
 </div>
 
 <div id="cover-modal" class="hidden fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-    
     <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-        
         <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onclick="document.getElementById('cover-modal').classList.add('hidden')"></div>
-
         <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-
         <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full">
-            
             <div class="bg-gray-50 px-4 py-3 border-b border-gray-200 flex justify-between items-center">
                 <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">Select a New Cover</h3>
                 <button onclick="document.getElementById('cover-modal').classList.add('hidden')" class="text-gray-400 hover:text-gray-500 focus:outline-none">
                     <span class="text-2xl">&times;</span>
                 </button>
             </div>
-
             <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4 min-h-[300px]">
-                
                 <div id="modal-loading" class="htmx-indicator flex flex-col items-center justify-center h-48 space-y-4">
                     <svg class="animate-spin h-10 w-10 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -265,10 +283,8 @@
                     </svg>
                     <p class="text-gray-500 font-medium">Searching Google & Open Library...</p>
                 </div>
-
                 <div id="modal-content"></div>
             </div>
-            
         </div>
     </div>
 </div>

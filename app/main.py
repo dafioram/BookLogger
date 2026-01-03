@@ -30,13 +30,21 @@ def format_minutes(mins):
     m = mins % 60
     return f"{h}h {m}m"
 
+def format_runtime(mins):
+    """Formats audio length (e.g. 630 -> '10h 30m')"""
+    if not mins: return ""
+    h = mins // 60
+    m = mins % 60
+    return f"{h}h {m}m"
+
 templates.env.filters["format_minutes"] = format_minutes
+templates.env.filters["format_runtime"] = format_runtime
 
 def process_book_row(row):
     """
     Converts a SQLite Row to a dict and handles logic like:
     - JSON parsing for formats
-    - Swapping cover_url for cover_path if it exists
+    - Swapping cover_url for cover_path ONLY if cover_path is valid
     """
     r = dict(row)
     
@@ -44,9 +52,11 @@ def process_book_row(row):
     if 'formats_owned' in r:
         r['formats'] = json.loads(r['formats_owned']) if r['formats_owned'] else []
     
-    # 2. IMAGE LOGIC: If local path exists, override the remote URL
-    if r.get('cover_path'):
-        r['cover_url'] = r['cover_path']
+    # 2. IMAGE LOGIC (Updated Safety Check)
+    # Only override the URL if cover_path is a non-empty string
+    local_path = r.get('cover_path')
+    if local_path and isinstance(local_path, str) and local_path.strip():
+        r['cover_url'] = local_path
         
     return r
 
@@ -313,7 +323,6 @@ async def search_api(request: Request, query: str = Form(...)):
             
     return templates.TemplateResponse("partials/search_row.html", {"request": request, "results": results})
 
-# --- UPDATED ADD BOOK ROUTE ---
 @app.post("/api/add_book")
 async def add_book(
     google_id: str = Form(...), 
@@ -327,7 +336,7 @@ async def add_book(
     year: str = Form(""),
     isbn13: str = Form(None),
     olid: str = Form(None),
-    content_score: int = Form(0)  # <--- Added Field
+    content_score: int = Form(0)
 ):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -338,14 +347,14 @@ async def add_book(
     
     if row:
         book_id = row['id']
-        # Update existing record (added content_score)
+        # Update existing record
         cursor.execute("""
             UPDATE books 
             SET publication_year = ?, genres = ?, average_rating = ?, summary = ?, isbn13 = ?, olid = ?, content_score = ?
             WHERE id = ?
         """, (year, genres, rating, summary, isbn13, olid, content_score, book_id))
     else:
-        # Insert new record (added content_score)
+        # Insert new record
         cursor.execute("""
             INSERT INTO books (google_id, isbn13, title, author, cover_url, total_pages, summary, genres, average_rating, publication_year, olid, content_score)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -363,7 +372,7 @@ async def add_book(
     
     return "✅ Added"
 
-# --- Manual Add Routes ---
+# --- UPDATED MANUAL ADD ROUTE ---
 @app.get("/add_manual", response_class=HTMLResponse)
 async def add_manual_page(request: Request):
     return templates.TemplateResponse("add_manual.html", {"request": request})
@@ -372,45 +381,93 @@ async def add_manual_page(request: Request):
 async def add_manual_post(
     title: str = Form(...),
     author: str = Form(...),
+    subtitle: str = Form(""),
     year: str = Form(""),
     pages: int = Form(0),
+    audio_minutes: int = Form(0),
     isbn13: str = Form(None),
+    goodreads_id: str = Form(None),
+    publisher: str = Form(""),
+    series_name: str = Form(""),
+    series_index: float = Form(None),
+    language: str = Form("en"),
     summary: str = Form(""),
-    # Inventory details
+    cover_url: str = Form(None),
     format_owned: str = Form("Physical"),
     status: str = Form("Shelved")
 ):
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # 1. Check for Duplicates (ISBN or Title/Author)
+    # Clean inputs
+    final_cover = cover_url.strip() if cover_url and cover_url.strip() else None
+
+    # 1. Search for Existing Book
     existing_book = None
     if isbn13:
-        cursor.execute("SELECT id FROM books WHERE isbn13 = ?", (isbn13,))
+        cursor.execute("SELECT id, cover_url FROM books WHERE isbn13 = ?", (isbn13,))
         existing_book = cursor.fetchone()
     
     if not existing_book:
-        cursor.execute("SELECT id FROM books WHERE title = ? AND author = ?", (title, author))
+        cursor.execute("SELECT id, cover_url FROM books WHERE title = ? AND author = ?", (title, author))
         existing_book = cursor.fetchone()
 
     if existing_book:
+        # --- UPDATE EXISTING RECORD ---
         book_id = existing_book['id']
-    else:
-        # 2. Create Book (Unique google_id required)
-        fake_google_id = f"manual_{uuid.uuid4().hex[:8]}"
-        default_cover = "/static/placeholder.png"
         
+        # Logic: If the DB has a placeholder (or nothing) and we have a REAL URL, update it.
+        # We also update the other fields (summary, audio, etc) to ensure the latest manual entry wins.
+        current_db_cover = existing_book['cover_url']
+        should_update_cover = final_cover and ("placeholder" in str(current_db_cover) or not current_db_cover)
+
+        sql = """
+            UPDATE books 
+            SET subtitle = ?, publisher = ?, publication_year = ?, 
+                total_pages = ?, total_audio_minutes = ?, summary = ?, 
+                series_name = ?, series_index = ?, goodreads_id = ?
+        """
+        params = [subtitle, publisher, year, pages, audio_minutes, summary, series_name, series_index, goodreads_id]
+        
+        if should_update_cover:
+            sql += ", cover_url = ?"
+            params.append(final_cover)
+            
+        sql += " WHERE id = ?"
+        params.append(book_id)
+        
+        cursor.execute(sql, tuple(params))
+
+    else:
+        # --- INSERT NEW RECORD ---
+        unique_id = str(uuid.uuid4())
+        custom_google_id = f"manual_{unique_id}"
+        
+        # Use placeholder only if we are creating a NEW book and have no URL
+        insert_cover = final_cover if final_cover else "/static/placeholder.png"
+
         cursor.execute("""
-            INSERT INTO books (google_id, isbn13, title, author, publication_year, total_pages, summary, cover_url)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (fake_google_id, isbn13, title, author, year, pages, summary, default_cover))
+            INSERT INTO books (
+                google_id, isbn13, goodreads_id, title, subtitle, author, 
+                series_name, series_index, publisher, publication_year, language,
+                total_pages, total_audio_minutes, summary, cover_url, content_score
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            custom_google_id, isbn13, goodreads_id, title, subtitle, author, 
+            series_name, series_index, publisher, year, language,
+            pages, audio_minutes, summary, insert_cover, 100
+        ))
         book_id = cursor.lastrowid
 
-    # 3. Add to Inventory (user_books)
+    # 3. Add to Inventory (User Books)
     cursor.execute("SELECT id FROM user_books WHERE book_id = ?", (book_id,))
-    if not cursor.fetchone():
+    existing_inventory = cursor.fetchone()
+    
+    if existing_inventory:
+        user_book_id = existing_inventory['id']
+    else:
         formats = [format_owned]
-        # Determine ownership based on format
         is_owned = True
         if format_owned in ["Libby Audiobook", "Libby eBook", "Libby Physical"]:
             is_owned = False
@@ -419,11 +476,12 @@ async def add_manual_post(
             INSERT INTO user_books (book_id, shelf_status, formats_owned, is_owned)
             VALUES (?, ?, ?, ?)
         """, (book_id, status, json.dumps(formats), is_owned))
+        user_book_id = cursor.lastrowid
 
     conn.commit()
     conn.close()
     
-    return RedirectResponse(url=f"/book/{book_id}", status_code=303)
+    return RedirectResponse(url=f"/book/{user_book_id}", status_code=303)
 
 @app.get("/book/{id}", response_class=HTMLResponse)
 async def book_detail(request: Request, id: int):
@@ -459,11 +517,32 @@ async def book_detail(request: Request, id: int):
 @app.post("/book/{id}/delete")
 async def delete_book(id: int):
     conn = get_db_connection()
-    # Cascade Delete: Logs first, then the book
-    conn.execute("DELETE FROM reading_logs WHERE user_book_id = ?", (id,))
-    conn.execute("DELETE FROM user_books WHERE id = ?", (id,))
+    cursor = conn.cursor()
+    
+    # 1. Find the parent book_id before we delete the inventory entry
+    row = cursor.execute("SELECT book_id FROM user_books WHERE id = ?", (id,)).fetchone()
+    if not row:
+        conn.close()
+        return RedirectResponse(url="/library", status_code=303)
+        
+    book_id = row['book_id']
+    
+    # 2. Delete Logs & Inventory Entry
+    cursor.execute("DELETE FROM reading_logs WHERE user_book_id = ?", (id,))
+    cursor.execute("DELETE FROM user_books WHERE id = ?", (id,))
+    
+    # 3. ORPHAN CHECK: Does anyone else own this book?
+    # If count is 0, we should delete the 'books' record too so it doesn't haunt us.
+    cursor.execute("SELECT COUNT(*) FROM user_books WHERE book_id = ?", (book_id,))
+    count = cursor.fetchone()[0]
+    
+    if count == 0:
+        cursor.execute("DELETE FROM books WHERE id = ?", (book_id,))
+        print(f"🗑️ Deleted orphaned book definition (ID: {book_id})")
+        
     conn.commit()
     conn.close()
+    
     return RedirectResponse(url="/library", status_code=303)
 
 @app.post("/book/{id}/update_inventory")
@@ -565,20 +644,20 @@ async def author_page(request: Request, name: str):
         "author_name": name
     })
 
-# --- COVER SWAPPER ROUTES ---
-
 @app.get("/book/{id}/cover_options", response_class=HTMLResponse)
 async def get_cover_options(request: Request, id: int):
     conn = get_db_connection()
-    book = conn.execute("SELECT title, author, isbn13 FROM books WHERE id = ?", (id,)).fetchone()
+    book = conn.execute("SELECT title, author FROM books WHERE id = ?", (id,)).fetchone()
     conn.close()
     
     if not book: return "Book not found"
 
-    # Always search by Title + Author to find ALL editions
+    # --- STRATEGY: Title + Author Only ---
+    # We ignore ISBN here intentionally to find "Visual Variations" 
+    # (e.g. Kindle vs. Hardcover vs. 10th Anniversary Edition)
     query = f"{book['title']} {book['author']}"
     
-    # Reuse your existing smart search
+    # Run the search
     results = await search_aggregated(query)
     
     # Filter down to just unique, valid images

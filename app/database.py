@@ -38,10 +38,11 @@ def init_db():
         cover_url TEXT,
         cover_path TEXT,
         total_pages INTEGER,
+        total_audio_minutes INTEGER DEFAULT 0,  -- <--- ADDED THIS
         summary TEXT,
         genres TEXT,
         average_rating REAL,
-        content_score INTEGER DEFAULT 0  -- <--- NEW COLUMN
+        content_score INTEGER DEFAULT 0
     )
     ''')
     
