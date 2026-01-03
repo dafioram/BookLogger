@@ -757,29 +757,35 @@ async def author_page(request: Request, name: str):
         "author_name": name
     })
 
-# --- NEW PROXY ROUTE (Placed here) ---
 @app.get("/api/cover_proxy")
 async def cover_proxy(url: str):
-    # 1. Validation: Don't process empty or local URLs
+    # 1. Validation
     if not url: return Response(status_code=404)
     if url.startswith("/static"):
         return RedirectResponse(url)
 
     try:
         # 2. The Spoof: Mimic a real browser so we don't get blocked
+        # (These are the new lines that fix the issue)
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+            "Referer": "https://www.google.com/",  
+            "Accept-Language": "en-US,en;q=0.9"
         }
-        # 3. The Fetch: Server downloads image
-        async with httpx.AsyncClient(follow_redirects=True) as client:
-            resp = await client.get(url, headers=headers)
+
+        # 3. The Fetch
+        async with httpx.AsyncClient(follow_redirects=True, verify=False) as client:
+            resp = await client.get(url, headers=headers, timeout=10.0)
             
             if resp.status_code != 200:
+                # If proxy fails, fallback to placeholder
                 return RedirectResponse("/static/placeholder.png")
                 
-            # 4. The Handoff: Stream image back to browser
+            # 4. The Handoff
             return Response(content=resp.content, media_type=resp.headers.get("content-type", "image/jpeg"))
-    except:
+    except Exception as e:
+        print(f"Proxy Error: {e}")
         return RedirectResponse("/static/placeholder.png")
 
 # --- COVER SWAPPER ROUTE ---

@@ -8,11 +8,12 @@
         <div class="w-full md:w-1/3 flex flex-col items-center flex-shrink-0">
             
             <div class="w-64 md:w-80 shadow-xl rounded-lg overflow-hidden mb-6 relative group">
-                <img 
-                    src="{% if 'http' in book.cover_url %}/api/cover_proxy?url={{ book.cover_url | urlencode }}{% else %}{{ book.cover_url }}{% endif %}" 
-                    class="w-full h-auto object-cover"
-                    onerror="this.onerror=null;this.src='/static/placeholder.png';"
-                >
+			<img 
+				src="{{ book.cover_url }}" 
+				class="w-full h-auto object-cover shadow-md"
+				loading="eager"
+				onerror="this.onerror=null;this.src='/static/placeholder.png';"
+			>
             </div>
 
             <div class="w-full max-w-xs text-center mt-auto">
