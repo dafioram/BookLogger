@@ -41,7 +41,7 @@
 
             <details class="group bg-slate-50 border border-slate-200 rounded-lg">
                 <summary class="flex justify-between items-center font-bold cursor-pointer list-none p-4 text-slate-600 hover:text-blue-600 hover:bg-slate-100 transition rounded-lg">
-                    <span>➕ Add More Details (Subtitle, IDs, Series)</span>
+                    <span>➕ Add More Details (Genre, IDs, Series)</span>
                     <span class="transition group-open:rotate-180">
                         <svg fill="none" height="20" width="20" shape-rendering="geometricPrecision" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"></path></svg>
                     </span>
@@ -65,7 +65,7 @@
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-2 gap-4">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
                             <label class="block text-xs font-bold uppercase text-gray-500 mb-1">Publisher</label>
                             <input type="text" name="publisher" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none text-sm">
@@ -74,16 +74,28 @@
                             <label class="block text-xs font-bold uppercase text-gray-500 mb-1">Language</label>
                             <input type="text" name="language" value="en" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none text-sm">
                         </div>
+                        <div>
+                            <label class="block text-xs font-bold uppercase text-gray-500 mb-1">Genre(s)</label>
+                            <input type="text" name="genres" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none text-sm" placeholder="Fantasy, Sci-Fi">
+                        </div>
                     </div>
 
-                    <div class="grid grid-cols-2 gap-4">
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-100 p-3 rounded-lg border border-slate-200">
                         <div>
-                            <label class="block text-xs font-bold uppercase text-gray-500 mb-1">ISBN-13</label>
-                            <input type="text" name="isbn13" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none text-sm font-mono">
+                            <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">ISBN-13</label>
+                            <input type="text" name="isbn13" class="w-full p-2 border border-gray-300 rounded text-xs font-mono">
                         </div>
                         <div>
-                            <label class="block text-xs font-bold uppercase text-gray-500 mb-1">Goodreads ID</label>
-                            <input type="text" name="goodreads_id" class="w-full p-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none text-sm font-mono">
+                            <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">ASIN (Amazon)</label>
+                            <input type="text" name="asin" class="w-full p-2 border border-gray-300 rounded text-xs font-mono" placeholder="B00...">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">Goodreads ID</label>
+                            <input type="text" name="goodreads_id" class="w-full p-2 border border-gray-300 rounded text-xs font-mono">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">OpenLibrary ID</label>
+                            <input type="text" name="olid" class="w-full p-2 border border-gray-300 rounded text-xs font-mono" placeholder="OL...">
                         </div>
                     </div>
 

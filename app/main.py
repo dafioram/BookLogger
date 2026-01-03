@@ -379,20 +379,28 @@ async def add_manual_page(request: Request):
 
 @app.post("/add_manual")
 async def add_manual_post(
+    # --- REQUIRED ---
     title: str = Form(...),
     author: str = Form(...),
+    
+    # --- OPTIONAL / ADVANCED ---
     subtitle: str = Form(""),
     year: str = Form(""),
     pages: int = Form(0),
     audio_minutes: int = Form(0),
     isbn13: str = Form(None),
+    asin: str = Form(None),         # <--- NEW
     goodreads_id: str = Form(None),
+    olid: str = Form(None),         # <--- NEW
     publisher: str = Form(""),
     series_name: str = Form(""),
     series_index: float = Form(None),
     language: str = Form("en"),
+    genres: str = Form(""),         # <--- NEW
     summary: str = Form(""),
     cover_url: str = Form(None),
+    
+    # --- INVENTORY ---
     format_owned: str = Form("Physical"),
     status: str = Form("Shelved")
 ):
@@ -408,6 +416,7 @@ async def add_manual_post(
         cursor.execute("SELECT id, cover_url FROM books WHERE isbn13 = ?", (isbn13,))
         existing_book = cursor.fetchone()
     
+    # If not found by ISBN, try Title + Author
     if not existing_book:
         cursor.execute("SELECT id, cover_url FROM books WHERE title = ? AND author = ?", (title, author))
         existing_book = cursor.fetchone()
@@ -416,18 +425,21 @@ async def add_manual_post(
         # --- UPDATE EXISTING RECORD ---
         book_id = existing_book['id']
         
-        # Logic: If the DB has a placeholder (or nothing) and we have a REAL URL, update it.
-        # We also update the other fields (summary, audio, etc) to ensure the latest manual entry wins.
         current_db_cover = existing_book['cover_url']
         should_update_cover = final_cover and ("placeholder" in str(current_db_cover) or not current_db_cover)
 
+        # Update SQL includes genres, asin, olid
         sql = """
             UPDATE books 
             SET subtitle = ?, publisher = ?, publication_year = ?, 
                 total_pages = ?, total_audio_minutes = ?, summary = ?, 
-                series_name = ?, series_index = ?, goodreads_id = ?
+                series_name = ?, series_index = ?, goodreads_id = ?, 
+                asin = ?, olid = ?, genres = ?
         """
-        params = [subtitle, publisher, year, pages, audio_minutes, summary, series_name, series_index, goodreads_id]
+        params = [
+            subtitle, publisher, year, pages, audio_minutes, summary, 
+            series_name, series_index, goodreads_id, asin, olid, genres
+        ]
         
         if should_update_cover:
             sql += ", cover_url = ?"
@@ -443,19 +455,18 @@ async def add_manual_post(
         unique_id = str(uuid.uuid4())
         custom_google_id = f"manual_{unique_id}"
         
-        # Use placeholder only if we are creating a NEW book and have no URL
         insert_cover = final_cover if final_cover else "/static/placeholder.png"
 
         cursor.execute("""
             INSERT INTO books (
-                google_id, isbn13, goodreads_id, title, subtitle, author, 
-                series_name, series_index, publisher, publication_year, language,
+                google_id, isbn13, asin, olid, goodreads_id, title, subtitle, author, 
+                series_name, series_index, publisher, publication_year, language, genres,
                 total_pages, total_audio_minutes, summary, cover_url, content_score
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            custom_google_id, isbn13, goodreads_id, title, subtitle, author, 
-            series_name, series_index, publisher, year, language,
+            custom_google_id, isbn13, asin, olid, goodreads_id, title, subtitle, author, 
+            series_name, series_index, publisher, year, language, genres,
             pages, audio_minutes, summary, insert_cover, 100
         ))
         book_id = cursor.lastrowid
