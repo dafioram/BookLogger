@@ -24,7 +24,7 @@
                     <option value="title_asc" {% if sort == 'title_asc' %}selected{% endif %}>🔤 Title (A-Z)</option>
                     <option value="date_desc" {% if sort == 'date_desc' %}selected{% endif %}>📅 Date Added</option>
                     <option value="author_asc" {% if sort == 'author_asc' %}selected{% endif %}>👤 Author (A-Z)</option>
-                    </select>
+                </select>
             </form>
 
             <form action="/library" method="get" class="flex w-full md:w-auto shadow-sm">
@@ -90,6 +90,37 @@
         </a>
         {% endfor %}
     </div>
+
+    {% if total_pages > 1 %}
+    <div class="flex justify-center items-center gap-4 mt-12 mb-8">
+        
+        {% if current_page > 1 %}
+        <a href="/library?page={{ current_page - 1 }}&q={{ query }}&sort={{ sort }}{% if selected_tag %}&tag={{ selected_tag }}{% endif %}" 
+           class="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg font-bold hover:bg-gray-50 hover:text-blue-600 transition shadow-sm">
+            ← Previous
+        </a>
+        {% else %}
+        <span class="bg-gray-100 border border-gray-200 text-gray-400 px-4 py-2 rounded-lg font-bold cursor-not-allowed">
+            ← Previous
+        </span>
+        {% endif %}
+
+        <span class="text-gray-600 font-medium text-sm">
+            Page <strong class="text-slate-800">{{ current_page }}</strong> of <strong>{{ total_pages }}</strong>
+        </span>
+
+        {% if current_page < total_pages %}
+        <a href="/library?page={{ current_page + 1 }}&q={{ query }}&sort={{ sort }}{% if selected_tag %}&tag={{ selected_tag }}{% endif %}" 
+           class="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg font-bold hover:bg-gray-50 hover:text-blue-600 transition shadow-sm">
+            Next →
+        </a>
+        {% else %}
+        <span class="bg-gray-100 border border-gray-200 text-gray-400 px-4 py-2 rounded-lg font-bold cursor-not-allowed">
+            Next →
+        </span>
+        {% endif %}
+    </div>
+    {% endif %}
 
     {% if not books %}
     <div class="text-center py-20">

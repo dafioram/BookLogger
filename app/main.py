@@ -273,25 +273,29 @@ async def top_books_page(request: Request):
     return templates.TemplateResponse("top_books.html", {"request": request, "books": books})
 
 @app.get("/library", response_class=HTMLResponse)
-async def library(request: Request, q: str = "", sort: str = "title_asc", tag: str = None):
+async def library(request: Request, q: str = "", sort: str = "title_asc", tag: str = None, page: int = 1):
     conn = get_db_connection()
     
+    ITEMS_PER_PAGE = 24
+    offset = (page - 1) * ITEMS_PER_PAGE
+
     # 1. Fetch all tags for the dropdown
     all_tags = conn.execute("SELECT * FROM tags ORDER BY name ASC").fetchall()
     
-    # 2. Process Tag Filter (Handle empty string from "All Tags")
+    # 2. Process Tag Filter
     selected_tag_id = None
     if tag and tag.isdigit():
         selected_tag_id = int(tag)
 
-    # 3. Build Query
-    query = """
-        SELECT ub.id, b.title, b.author, b.cover_url, b.cover_path, 
-               ub.read_status, ub.shelf_status, ub.formats_owned, ub.is_owned, 
-               ub.effective_user_rating
+    # --- BUILD QUERY PARTS ---
+    # We build the "core" of the query (FROM + WHERE) separately so we can reuse it
+    # for both counting the total results and fetching the specific page.
+    
+    base_query = """
         FROM user_books ub
         JOIN books b ON ub.book_id = b.id
     """
+    
     params = []
     conditions = []
     
@@ -300,28 +304,46 @@ async def library(request: Request, q: str = "", sort: str = "title_asc", tag: s
         conditions.append("(b.title LIKE ? OR b.author LIKE ?)")
         params.extend([f"%{q}%", f"%{q}%"])
         
-    # Filter by Tag (Join if selected)
+    # Filter by Tag
     if selected_tag_id:
-        query += " JOIN book_tags bt ON b.id = bt.book_id "
+        base_query += " JOIN book_tags bt ON b.id = bt.book_id "
         conditions.append("bt.tag_id = ?")
         params.append(selected_tag_id)
 
-    # Apply Filters
+    # Apply Conditions
+    where_clause = ""
     if conditions:
-        query += " WHERE " + " AND ".join(conditions)
-    
-    # Sorting Logic
-    if sort == "date_desc":
-        query += " ORDER BY ub.date_added DESC"
-    elif sort == "author_asc":
-        query += " ORDER BY b.author ASC"
-    elif sort == "rating_desc":
-        query += " ORDER BY ub.effective_user_rating DESC"
-    else:
-        # Default: Title (A-Z)
-        query += " ORDER BY b.title ASC" 
+        where_clause = " WHERE " + " AND ".join(conditions)
 
-    books_rows = conn.execute(query, params).fetchall()
+    # --- QUERY 1: GET TOTAL COUNT ---
+    count_sql = f"SELECT COUNT(*) {base_query} {where_clause}"
+    total_books = conn.execute(count_sql, params).fetchone()[0]
+    total_pages = math.ceil(total_books / ITEMS_PER_PAGE)
+
+    # --- QUERY 2: GET PAGINATED DATA ---
+    # Sorting Logic
+    order_clause = " ORDER BY b.title ASC" # Default
+    if sort == "date_desc":
+        order_clause = " ORDER BY ub.date_added DESC"
+    elif sort == "author_asc":
+        order_clause = " ORDER BY b.author ASC"
+    elif sort == "rating_desc":
+        order_clause = " ORDER BY ub.effective_user_rating DESC"
+
+    data_sql = f"""
+        SELECT ub.id, b.title, b.author, b.cover_url, b.cover_path, 
+               ub.read_status, ub.shelf_status, ub.formats_owned, ub.is_owned, 
+               ub.effective_user_rating
+        {base_query}
+        {where_clause}
+        {order_clause}
+        LIMIT ? OFFSET ?
+    """
+    
+    # Add limit/offset params to the existing params list
+    data_params = params + [ITEMS_PER_PAGE, offset]
+    
+    books_rows = conn.execute(data_sql, data_params).fetchall()
     conn.close()
     
     books_data = [process_book_row(r) for r in books_rows]
@@ -332,7 +354,11 @@ async def library(request: Request, q: str = "", sort: str = "title_asc", tag: s
         "query": q, 
         "sort": sort,
         "all_tags": all_tags,
-        "selected_tag": selected_tag_id  # Pass the INT back to the template
+        "selected_tag": selected_tag_id,
+        # Pagination Data
+        "current_page": page,
+        "total_pages": total_pages,
+        "total_books": total_books
     })
 
 @app.get("/search", response_class=HTMLResponse)
