@@ -540,7 +540,8 @@ async def book_detail(request: Request, id: int):
     if calculated_rating:
         calculated_rating = round(calculated_rating, 1)
 
-    # --- FETCH TAGS ---
+    # --- FETCH TAGS FOR THIS BOOK ---
+    # Using book['book_id'] to ensure we match the Definition ID, not Inventory ID
     tags = conn.execute("""
         SELECT t.* FROM tags t
         JOIN book_tags bt ON t.id = bt.tag_id
@@ -548,13 +549,17 @@ async def book_detail(request: Request, id: int):
         ORDER BY t.name
     """, (book['book_id'],)).fetchall()
 
+    # --- FETCH ALL TAGS (For Autocomplete) ---
+    all_tags = conn.execute("SELECT name FROM tags ORDER BY name ASC").fetchall()
+
     conn.close()
     
     return templates.TemplateResponse("book_detail.html", {
         "request": request, 
         "book": book, 
         "logs": logs,
-        "tags": tags, # Pass tags to template
+        "tags": tags,           # The tags this specific book HAS
+        "all_tags": all_tags,   # The list of ALL tags (for the dropdown)
         "formats_owned": book['formats'],
         "calculated_rating": calculated_rating 
     })

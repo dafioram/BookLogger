@@ -107,8 +107,11 @@
         <div class="flex-grow flex flex-wrap items-center gap-2">
             {% for tag in tags %}
             <div class="group inline-flex items-center bg-white text-slate-700 text-sm font-medium px-3 py-1 rounded-full border border-slate-300 shadow-sm transition hover:border-blue-300 hover:text-blue-700">
-                {{ tag.name }}
-                <button type="submit" form="remove-tag-{{ tag.id }}" class="ml-2 text-slate-400 hover:text-red-500 focus:outline-none font-bold leading-none" title="Remove Tag">
+                <a href="/library?tag={{ tag.id }}" class="hover:text-blue-600 hover:underline mr-1">
+                    {{ tag.name }}
+                </a>
+                
+                <button type="submit" form="remove-tag-{{ tag.id }}" class="ml-1 text-slate-400 hover:text-red-500 focus:outline-none font-bold leading-none" title="Remove Tag">
                     ×
                 </button>
             </div>
@@ -117,10 +120,16 @@
             <div class="relative">
                 <input 
                     type="text" 
+                    list="tags-datalist" 
                     class="bg-transparent border-b-2 border-slate-200 focus:border-blue-500 outline-none text-sm px-2 py-1 placeholder-slate-400 transition-colors w-32 focus:w-48" 
                     placeholder="+ Add Tag..."
                     onkeydown="if(event.key === 'Enter'){ event.preventDefault(); document.getElementById('add-tag-input').value = this.value; document.getElementById('add-tag-form').submit(); }"
                 >
+                <datalist id="tags-datalist">
+                    {% for t in all_tags %}
+                    <option value="{{ t.name }}">
+                    {% endfor %}
+                </datalist>
             </div>
         </div>
     </div>
