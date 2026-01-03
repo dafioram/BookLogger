@@ -8,18 +8,29 @@
         
         <div class="flex flex-col md:flex-row space-y-2 md:space-y-0 md:space-x-4 w-full md:w-auto">
             
-            <form method="get" class="flex-shrink-0">
+            <form method="get" class="flex flex-col md:flex-row gap-2 flex-shrink-0">
                 {% if query %}<input type="hidden" name="q" value="{{ query }}">{% endif %}
+                
+                <select name="tag" onchange="this.form.submit()" class="w-full md:w-auto border border-gray-300 rounded px-3 py-2 bg-white text-sm font-bold text-slate-700 outline-none focus:border-blue-500 shadow-sm cursor-pointer hover:border-blue-400 transition">
+                    <option value="">🏷️ All Tags</option>
+                    {% for tag in all_tags %}
+                    <option value="{{ tag.id }}" {% if selected_tag == tag.id %}selected{% endif %}>
+                        {{ tag.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+
                 <select name="sort" onchange="this.form.submit()" class="w-full md:w-auto border border-gray-300 rounded px-3 py-2 bg-white text-sm font-bold text-slate-700 outline-none focus:border-blue-500 shadow-sm cursor-pointer hover:border-blue-400 transition">
                     <option value="title_asc" {% if sort == 'title_asc' %}selected{% endif %}>🔤 Title (A-Z)</option>
                     <option value="date_desc" {% if sort == 'date_desc' %}selected{% endif %}>📅 Date Added</option>
                     <option value="author_asc" {% if sort == 'author_asc' %}selected{% endif %}>👤 Author (A-Z)</option>
-                    <!-- <option value="rating_desc" {% if sort == 'rating_desc' %}selected{% endif %}>⭐ Highest Rated</option> -->
-                </select>
+                    </select>
             </form>
 
             <form action="/library" method="get" class="flex w-full md:w-auto shadow-sm">
                 {% if sort %}<input type="hidden" name="sort" value="{{ sort }}">{% endif %}
+                {% if selected_tag %}<input type="hidden" name="tag" value="{{ selected_tag }}">{% endif %}
+                
                 <input type="text" name="q" value="{{ query }}" placeholder="Search title or author..." class="border border-gray-300 rounded-l px-4 py-2 text-sm w-full md:w-64 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500">
                 <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-r hover:bg-blue-700 text-sm font-bold transition duration-150 ease-in-out">Search</button>
             </form>
@@ -84,7 +95,13 @@
     <div class="text-center py-20">
         <div class="text-4xl mb-4">📚</div>
         <h3 class="text-lg font-bold text-gray-600 mb-2">No books found</h3>
-        <p class="text-gray-400 text-sm">Try adjusting your search or add a new book.</p>
+        <p class="text-gray-400 text-sm">
+            {% if selected_tag %}
+                No books match the tag <strong>selected</strong>.
+            {% else %}
+                Try adjusting your search or add a new book.
+            {% endif %}
+        </p>
         <a href="/search" class="inline-block mt-4 text-blue-600 hover:underline font-bold text-sm">Go to Add Book &rarr;</a>
     </div>
     {% endif %}

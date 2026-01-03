@@ -97,7 +97,33 @@
         </div>
     </div>
 
-    <hr class="border-gray-200 my-10">
+    <hr class="border-gray-200 mt-10 mb-6">
+
+    <div class="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-8 flex flex-col md:flex-row items-start md:items-center gap-4 shadow-sm">
+        <div class="flex-shrink-0 flex items-center text-slate-500 font-bold uppercase text-xs tracking-wide">
+            <span class="text-lg mr-2">🏷️</span> My Tags:
+        </div>
+        
+        <div class="flex-grow flex flex-wrap items-center gap-2">
+            {% for tag in tags %}
+            <div class="group inline-flex items-center bg-white text-slate-700 text-sm font-medium px-3 py-1 rounded-full border border-slate-300 shadow-sm transition hover:border-blue-300 hover:text-blue-700">
+                {{ tag.name }}
+                <button type="submit" form="remove-tag-{{ tag.id }}" class="ml-2 text-slate-400 hover:text-red-500 focus:outline-none font-bold leading-none" title="Remove Tag">
+                    ×
+                </button>
+            </div>
+            {% endfor %}
+
+            <div class="relative">
+                <input 
+                    type="text" 
+                    class="bg-transparent border-b-2 border-slate-200 focus:border-blue-500 outline-none text-sm px-2 py-1 placeholder-slate-400 transition-colors w-32 focus:w-48" 
+                    placeholder="+ Add Tag..."
+                    onkeydown="if(event.key === 'Enter'){ event.preventDefault(); document.getElementById('add-tag-input').value = this.value; document.getElementById('add-tag-form').submit(); }"
+                >
+            </div>
+        </div>
+    </div>
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
         
@@ -277,6 +303,20 @@
         </div>
     </div>
 </div>
+
+<form id="add-tag-form" action="/api/tag/add" method="post" class="hidden">
+    <input type="hidden" name="book_id" value="{{ book.book_id }}">
+    <input type="hidden" name="user_book_id" value="{{ book.id }}">
+    <input type="hidden" name="tag_name" id="add-tag-input">
+</form>
+
+{% for tag in tags %}
+<form id="remove-tag-{{ tag.id }}" action="/api/tag/remove" method="post" class="hidden">
+    <input type="hidden" name="book_id" value="{{ book.book_id }}">
+    <input type="hidden" name="user_book_id" value="{{ book.id }}">
+    <input type="hidden" name="tag_id" value="{{ tag.id }}">
+</form>
+{% endfor %}
 
 <div id="cover-modal" class="hidden fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
     <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">

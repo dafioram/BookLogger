@@ -38,7 +38,7 @@ def init_db():
         cover_url TEXT,
         cover_path TEXT,
         total_pages INTEGER,
-        total_audio_minutes INTEGER DEFAULT 0,  -- <--- ADDED THIS
+        total_audio_minutes INTEGER DEFAULT 0,
         summary TEXT,
         genres TEXT,
         average_rating REAL,
@@ -78,6 +78,25 @@ def init_db():
         log_notes TEXT,
         session_rating REAL,  -- The rating for this specific read
         FOREIGN KEY(user_book_id) REFERENCES user_books(id)
+    )
+    ''')
+
+    # 4. Tags Definition (The "Bucket")
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS tags (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE NOT NULL
+    )
+    ''')
+
+    # 5. Book-Tag Links (The "Bridge")
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS book_tags (
+        book_id INTEGER,
+        tag_id INTEGER,
+        PRIMARY KEY (book_id, tag_id),
+        FOREIGN KEY(book_id) REFERENCES books(id) ON DELETE CASCADE,
+        FOREIGN KEY(tag_id) REFERENCES tags(id) ON DELETE CASCADE
     )
     ''')
     

@@ -9,10 +9,10 @@ import json
 import math
 import os
 import uuid
+import urllib.parse
 from datetime import date
 from .database import init_db, get_db_connection, backup_database
 from .metadata import search_aggregated
-import urllib.parse
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -40,8 +40,6 @@ def format_runtime(mins):
 
 templates.env.filters["format_minutes"] = format_minutes
 templates.env.filters["format_runtime"] = format_runtime
-
-import urllib.parse
 templates.env.filters["urlencode"] = urllib.parse.quote_plus
 
 def process_book_row(row):
@@ -275,9 +273,18 @@ async def top_books_page(request: Request):
     return templates.TemplateResponse("top_books.html", {"request": request, "books": books})
 
 @app.get("/library", response_class=HTMLResponse)
-async def library(request: Request, q: str = "", sort: str = "title_asc"):
+async def library(request: Request, q: str = "", sort: str = "title_asc", tag: str = None):
     conn = get_db_connection()
     
+    # 1. Fetch all tags for the dropdown
+    all_tags = conn.execute("SELECT * FROM tags ORDER BY name ASC").fetchall()
+    
+    # 2. Process Tag Filter (Handle empty string from "All Tags")
+    selected_tag_id = None
+    if tag and tag.isdigit():
+        selected_tag_id = int(tag)
+
+    # 3. Build Query
     query = """
         SELECT ub.id, b.title, b.author, b.cover_url, b.cover_path, 
                ub.read_status, ub.shelf_status, ub.formats_owned, ub.is_owned, 
@@ -286,10 +293,22 @@ async def library(request: Request, q: str = "", sort: str = "title_asc"):
         JOIN books b ON ub.book_id = b.id
     """
     params = []
+    conditions = []
     
+    # Filter by Text
     if q:
-        query += " WHERE b.title LIKE ? OR b.author LIKE ?"
-        params = [f"%{q}%", f"%{q}%"]
+        conditions.append("(b.title LIKE ? OR b.author LIKE ?)")
+        params.extend([f"%{q}%", f"%{q}%"])
+        
+    # Filter by Tag (Join if selected)
+    if selected_tag_id:
+        query += " JOIN book_tags bt ON b.id = bt.book_id "
+        conditions.append("bt.tag_id = ?")
+        params.append(selected_tag_id)
+
+    # Apply Filters
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
     
     # Sorting Logic
     if sort == "date_desc":
@@ -311,7 +330,9 @@ async def library(request: Request, q: str = "", sort: str = "title_asc"):
         "request": request, 
         "books": books_data, 
         "query": q, 
-        "sort": sort 
+        "sort": sort,
+        "all_tags": all_tags,
+        "selected_tag": selected_tag_id  # Pass the INT back to the template
     })
 
 @app.get("/search", response_class=HTMLResponse)
@@ -519,15 +540,60 @@ async def book_detail(request: Request, id: int):
     if calculated_rating:
         calculated_rating = round(calculated_rating, 1)
 
+    # --- FETCH TAGS ---
+    tags = conn.execute("""
+        SELECT t.* FROM tags t
+        JOIN book_tags bt ON t.id = bt.tag_id
+        WHERE bt.book_id = ?
+        ORDER BY t.name
+    """, (book['book_id'],)).fetchall()
+
     conn.close()
     
     return templates.TemplateResponse("book_detail.html", {
         "request": request, 
         "book": book, 
         "logs": logs,
+        "tags": tags, # Pass tags to template
         "formats_owned": book['formats'],
         "calculated_rating": calculated_rating 
     })
+
+# --- TAG API ENDPOINTS ---
+
+@app.post("/api/tag/add")
+async def add_tag_to_book(book_id: int = Form(...), user_book_id: int = Form(...), tag_name: str = Form(...)):
+    if not tag_name.strip():
+        return RedirectResponse(url=f"/book/{user_book_id}", status_code=303)
+        
+    conn = get_db_connection()
+    clean_name = tag_name.strip()
+    
+    # 1. Ensure Tag Exists
+    conn.execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (clean_name,))
+    tag = conn.execute("SELECT id FROM tags WHERE name = ?", (clean_name,)).fetchone()
+    tag_id = tag['id']
+    
+    # 2. Link Book to Tag
+    conn.execute("INSERT OR IGNORE INTO book_tags (book_id, tag_id) VALUES (?, ?)", (book_id, tag_id))
+    
+    conn.commit()
+    conn.close()
+    
+    return RedirectResponse(url=f"/book/{user_book_id}", status_code=303)
+
+@app.post("/api/tag/remove")
+async def remove_tag_from_book(book_id: int = Form(...), user_book_id: int = Form(...), tag_id: int = Form(...)):
+    conn = get_db_connection()
+    
+    conn.execute("DELETE FROM book_tags WHERE book_id = ? AND tag_id = ?", (book_id, tag_id))
+    
+    # Optional: Delete tag definition if no longer used? (Kept simple for now)
+    
+    conn.commit()
+    conn.close()
+    
+    return RedirectResponse(url=f"/book/{user_book_id}", status_code=303)
 
 @app.post("/book/{id}/delete")
 async def delete_book(id: int):
@@ -553,6 +619,7 @@ async def delete_book(id: int):
     
     if count == 0:
         cursor.execute("DELETE FROM books WHERE id = ?", (book_id,))
+        # Also clean up tags logic if strict, but CASCADE handles book_tags.
         print(f"🗑️ Deleted orphaned book definition (ID: {book_id})")
         
     conn.commit()
