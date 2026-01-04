@@ -826,13 +826,21 @@ async def get_cover_options(request: Request, id: int):
 async def set_cover(id: int, new_cover_url: str = Form(...)):
     conn = get_db_connection()
     
-    # Update the book record
+    # 1. Update the Book Definition (This 'id' is the book_id/Definition ID)
     conn.execute("UPDATE books SET cover_url = ?, cover_path = NULL WHERE id = ?", (new_cover_url, id))
     conn.commit()
+    
+    # 2. Find the correct Inventory ID (user_book_id) to redirect back to
+    # We look for the user_book entry that points to this book definition
+    row = conn.execute("SELECT id FROM user_books WHERE book_id = ?", (id,)).fetchone()
     conn.close()
     
-    # Refresh the page to show the new look
-    return RedirectResponse(url=f"/book/{id}", status_code=303)
+    # 3. Redirect to the User Book (Inventory) page, not the Definition ID
+    if row:
+        return RedirectResponse(url=f"/book/{row['id']}", status_code=303)
+    else:
+        # Fallback if something weird happens (e.g. orphan book)
+        return RedirectResponse(url="/library", status_code=303)
 
 # --- LOG MANAGEMENT ---
 @app.get("/log/{log_id}/edit", response_class=HTMLResponse)
