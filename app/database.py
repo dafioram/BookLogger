@@ -58,7 +58,7 @@ def init_db():
         formats_owned TEXT,
         inventory_notes TEXT,
         acquired_source TEXT,   -- e.g., "Amazon", "Gift", "Used Bookstore"
-        acquired_date DATE,     
+        acquired_date DATE,      
         date_added DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(book_id) REFERENCES books(id)
     )
@@ -97,6 +97,19 @@ def init_db():
         PRIMARY KEY (book_id, tag_id),
         FOREIGN KEY(book_id) REFERENCES books(id) ON DELETE CASCADE,
         FOREIGN KEY(tag_id) REFERENCES tags(id) ON DELETE CASCADE
+    )
+    ''')
+
+    # 6. Book Relations (The Knowledge Graph)
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS book_relations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_book_id INTEGER NOT NULL,
+        target_book_id INTEGER NOT NULL,
+        relation_type TEXT NOT NULL,
+        FOREIGN KEY(source_book_id) REFERENCES books(id) ON DELETE CASCADE,
+        FOREIGN KEY(target_book_id) REFERENCES books(id) ON DELETE CASCADE,
+        UNIQUE(source_book_id, target_book_id, relation_type)
     )
     ''')
     

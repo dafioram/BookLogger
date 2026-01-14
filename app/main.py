@@ -231,7 +231,7 @@ async def stats_page(request: Request, year: int = None):
         "selected_year": selected_year,
         "available_years": available_years,
         # Bar Chart
-        "labels": labels,         
+        "labels": labels,          
         "data_books": data_books, 
         "data_hours": data_hours, 
         "data_pages": data_pages,
@@ -383,7 +383,7 @@ async def add_book(
     pages: int = Form(0),
     summary: str = Form(""),
     genres: str = Form(""),        
-    rating: float = Form(0.0),     
+    rating: float = Form(0.0),      
     year: str = Form(""),
     isbn13: str = Form(None),
     olid: str = Form(None),
@@ -440,14 +440,14 @@ async def add_manual_post(
     pages: int = Form(0),
     audio_minutes: int = Form(0),
     isbn13: str = Form(None),
-    asin: str = Form(None),         
+    asin: str = Form(None),          
     goodreads_id: str = Form(None),
-    olid: str = Form(None),         
+    olid: str = Form(None),          
     publisher: str = Form(""),
     series_name: str = Form(""),
     series_index: float = Form(None),
     language: str = Form("en"),
-    genres: str = Form(""),         
+    genres: str = Form(""),          
     summary: str = Form(""),
     cover_url: str = Form(None),
     
@@ -575,8 +575,40 @@ async def book_detail(request: Request, id: int):
         ORDER BY t.name
     """, (book['book_id'],)).fetchall()
 
-    # --- FETCH ALL TAGS (For Autocomplete) ---
+    # --- FETCH RELATIONS ---
+    # 1. Outgoing (Source = Current Book)
+    outgoing = conn.execute("""
+        SELECT r.id as relation_id, r.relation_type, b.title, ub.id as related_inventory_id, b.cover_url, b.cover_path
+        FROM book_relations r
+        JOIN books b ON r.target_book_id = b.id
+        LEFT JOIN user_books ub ON b.id = ub.book_id
+        WHERE r.source_book_id = ?
+    """, (book['book_id'],)).fetchall()
+
+    # 2. Incoming (Target = Current Book)
+    incoming = conn.execute("""
+        SELECT r.id as relation_id, r.relation_type, b.title, ub.id as related_inventory_id, b.cover_url, b.cover_path
+        FROM book_relations r
+        JOIN books b ON r.source_book_id = b.id
+        LEFT JOIN user_books ub ON b.id = ub.book_id
+        WHERE r.target_book_id = ?
+    """, (book['book_id'],)).fetchall()
+
+    # Helper to process cover logic for relation list
+    def prep_relation(r, is_incoming=False):
+        d = dict(r)
+        # Handle Local Cover
+        if d.get('cover_path'): d['cover_url'] = d['cover_path']
+        d['is_incoming'] = is_incoming
+        return d
+
+    relations = [prep_relation(r, False) for r in outgoing] + [prep_relation(r, True) for r in incoming]
+
+    # --- FETCH ALL TAGS & BOOKS (For Autocomplete) ---
     all_tags = conn.execute("SELECT name FROM tags ORDER BY name ASC").fetchall()
+    
+    # Fetch all books for the "Add Relation" dropdown
+    all_books_list = conn.execute("SELECT title FROM books ORDER BY title ASC").fetchall()
 
     conn.close()
     
@@ -586,11 +618,13 @@ async def book_detail(request: Request, id: int):
         "logs": logs,
         "tags": tags,           # The tags this specific book HAS
         "all_tags": all_tags,   # The list of ALL tags (for the dropdown)
+        "relations": relations, # The list of related books
+        "all_books_list": all_books_list, # For the relation datalist
         "formats_owned": book['formats'],
         "calculated_rating": calculated_rating 
     })
 
-# --- TAG API ENDPOINTS ---
+# --- TAG & RELATION API ENDPOINTS ---
 
 @app.post("/api/tag/add")
 async def add_tag_to_book(book_id: int = Form(...), user_book_id: int = Form(...), tag_name: str = Form(...)):
@@ -624,6 +658,44 @@ async def remove_tag_from_book(book_id: int = Form(...), user_book_id: int = For
     conn.commit()
     conn.close()
     
+    return RedirectResponse(url=f"/book/{user_book_id}", status_code=303)
+
+@app.post("/api/relation/add")
+async def add_relation(
+    source_book_id: int = Form(...), # The Definition ID of current book
+    user_book_id: int = Form(...),   # The Inventory ID (for redirect)
+    target_book_title: str = Form(...),
+    relation_type: str = Form(...)
+):
+    conn = get_db_connection()
+    
+    # 1. Find the target book ID by title
+    target = conn.execute("SELECT id FROM books WHERE title = ?", (target_book_title,)).fetchone()
+    
+    if target:
+        target_book_id = target['id']
+        
+        # Prevent self-linking
+        if source_book_id != target_book_id:
+            # 2. Insert Relation
+            conn.execute("""
+                INSERT OR IGNORE INTO book_relations (source_book_id, target_book_id, relation_type)
+                VALUES (?, ?, ?)
+            """, (source_book_id, target_book_id, relation_type))
+            conn.commit()
+    
+    conn.close()
+    return RedirectResponse(url=f"/book/{user_book_id}", status_code=303)
+
+@app.post("/api/relation/remove")
+async def remove_relation(
+    relation_id: int = Form(...),
+    user_book_id: int = Form(...)
+):
+    conn = get_db_connection()
+    conn.execute("DELETE FROM book_relations WHERE id = ?", (relation_id,))
+    conn.commit()
+    conn.close()
     return RedirectResponse(url=f"/book/{user_book_id}", status_code=303)
 
 @app.post("/book/{id}/delete")
@@ -661,7 +733,7 @@ async def delete_book(id: int):
 @app.post("/book/{id}/update_inventory")
 async def update_inventory(
     id: int, 
-    shelf_status: str = Form(...),
+    shelf_status: str = Form(...), 
     inventory_notes: str = Form(""),
     # Standard
     physical: str = Form(None),
@@ -712,7 +784,7 @@ async def add_log(
     format_consumed: str = Form(...), 
     pace: str = Form("Medium"), 
     notes: str = Form(""), 
-    is_dnf: bool = Form(False),
+    is_dnf: bool = Form(False), 
     is_borrowed: bool = Form(False),
     session_rating: float = Form(None)
 ):
@@ -859,7 +931,7 @@ async def update_log(
     format_consumed: str = Form(...), 
     pace: str = Form("Medium"), 
     notes: str = Form(""), 
-    is_dnf: bool = Form(False),
+    is_dnf: bool = Form(False), 
     is_borrowed: bool = Form(False),
     session_rating: float = Form(None)
 ):

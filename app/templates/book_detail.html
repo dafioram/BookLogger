@@ -135,6 +135,59 @@
         </div>
     </div>
 
+    <div class="mb-10">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-bold text-slate-800 flex items-center">
+                <span class="mr-2">🔗</span> Connected Books
+            </h2>
+            <button onclick="document.getElementById('relation-modal').classList.remove('hidden')" class="text-xs font-bold text-blue-600 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-3 py-1 rounded-full transition">
+                + Link a Book
+            </button>
+        </div>
+
+        {% if relations %}
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {% for rel in relations %}
+            <div class="flex items-center bg-white p-3 rounded-lg shadow-sm border border-slate-200 group">
+                <div class="flex-shrink-0 w-12 h-16 bg-gray-200 rounded overflow-hidden mr-4 shadow-sm relative">
+                    <img src="{{ rel.cover_url }}" class="w-full h-full object-cover" onerror="this.src='/static/placeholder.png'">
+                </div>
+                
+                <div class="flex-grow min-w-0">
+                    <div class="flex items-center flex-wrap gap-1 mb-1">
+                        {% if rel.is_incoming %}
+                            <span class="bg-gray-100 text-gray-500 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border border-gray-200">
+                                Linked from
+                            </span>
+                        {% endif %}
+                        
+                        <span class="bg-purple-50 text-purple-700 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border border-purple-100">
+                            {{ rel.relation_type|replace('_', ' ') }}
+                        </span>
+                    </div>
+                    
+                    <a href="/book/{{ rel.related_inventory_id if rel.related_inventory_id else '#' }}" class="block text-sm font-bold text-slate-800 hover:text-blue-600 truncate">
+                        {{ rel.title }}
+                    </a>
+                </div>
+
+                <form action="/api/relation/remove" method="post" class="ml-2">
+                    <input type="hidden" name="relation_id" value="{{ rel.relation_id }}">
+                    <input type="hidden" name="user_book_id" value="{{ book.id }}">
+                    <button type="submit" class="text-gray-300 hover:text-red-500 font-bold px-2" title="Remove Link">
+                        &times;
+                    </button>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-gray-400 text-sm italic bg-slate-50 p-4 rounded border border-slate-100">
+            No connections yet. Link sequels, similar vibes, or contrasting books!
+        </div>
+        {% endif %}
+    </div>
+
     <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
         
         <div class="md:col-span-1 space-y-8">
@@ -352,6 +405,64 @@
                 
                 <div id="modal-content"></div>
             </div>
+        </div>
+    </div>
+</div>
+
+<div id="relation-modal" class="hidden fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onclick="document.getElementById('relation-modal').classList.add('hidden')"></div>
+        <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+            <form action="/api/relation/add" method="post">
+                <input type="hidden" name="source_book_id" value="{{ book.book_id }}">
+                <input type="hidden" name="user_book_id" value="{{ book.id }}">
+                
+                <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                    <h3 class="text-lg font-bold text-gray-900">Link a Book</h3>
+                </div>
+                
+                <div class="p-6 space-y-4">
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">Target Book</label>
+                        <input type="text" list="books-datalist" name="target_book_title" required class="w-full border border-gray-300 rounded px-3 py-2 text-sm" placeholder="Start typing book title...">
+                        <datalist id="books-datalist">
+                            {% for b in all_books_list %}
+                            <option value="{{ b.title }}">
+                            {% endfor %}
+                        </datalist>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">Relationship Type</label>
+                        <select name="relation_type" class="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white">
+                            <optgroup label="Symmetric (Bidirectional)">
+                                <option value="reads_like">Reads Like</option>
+                                <option value="contrast">Contrast / Opposite</option>
+                                <option value="complementary">Complementary</option>
+                                <option value="same_universe">Same Universe</option>
+                                <option value="shared_trope">Shared Trope</option>
+                            </optgroup>
+                            <optgroup label="Asymmetric (Directional)">
+                                <option value="prequel_to">Prequel To...</option>
+                                <option value="sequel_to">Sequel To...</option>
+                                <option value="prerequisite_for">Prerequisite For...</option>
+                                <option value="more_detailed_than">More Detailed Than...</option>
+                                <option value="simpler_than">Simpler Than...</option>
+                                <option value="inspired_by">Inspired By...</option>
+                            </optgroup>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                    <button type="submit" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none sm:ml-3 sm:w-auto sm:text-sm">
+                        Create Link
+                    </button>
+                    <button type="button" onclick="document.getElementById('relation-modal').classList.add('hidden')" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
+                        Cancel
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
