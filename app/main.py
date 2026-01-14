@@ -11,8 +11,18 @@ import os
 import uuid
 import urllib.parse
 from datetime import date
+
+# --- LOCAL IMPORTS ---
 from .database import init_db, get_db_connection, backup_database
 from .metadata import search_aggregated
+# NEW: Importing logic from utils to keep main.py clean
+from .utils import (
+    format_minutes, 
+    format_runtime, 
+    process_book_row, 
+    recalculate_book_rating, 
+    RELATION_MAP
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -24,64 +34,11 @@ os.makedirs("app/static", exist_ok=True)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 
-# --- UTILITIES ---
-def format_minutes(mins):
-    if not mins: return ""
-    h = math.floor(mins / 60)
-    m = mins % 60
-    return f"{h}h {m}m"
-
-def format_runtime(mins):
-    """Formats audio length (e.g. 630 -> '10h 30m')"""
-    if not mins: return ""
-    h = mins // 60
-    m = mins % 60
-    return f"{h}h {m}m"
-
+# --- REGISTER FILTERS ---
+# These functions are now imported from utils.py
 templates.env.filters["format_minutes"] = format_minutes
 templates.env.filters["format_runtime"] = format_runtime
 templates.env.filters["urlencode"] = urllib.parse.quote_plus
-
-def process_book_row(row):
-    """
-    Converts a SQLite Row to a dict and handles logic like:
-    - JSON parsing for formats
-    - Swapping cover_url for cover_path ONLY if cover_path is valid
-    """
-    r = dict(row)
-    
-    # 1. Format Parsing
-    if 'formats_owned' in r:
-        r['formats'] = json.loads(r['formats_owned']) if r['formats_owned'] else []
-    
-    # 2. IMAGE LOGIC (Updated Safety Check)
-    # Only override the URL if cover_path is a non-empty string
-    local_path = r.get('cover_path')
-    if local_path and isinstance(local_path, str) and local_path.strip():
-        r['cover_url'] = local_path
-        
-    return r
-
-def recalculate_book_rating(conn, user_book_id):
-    """
-    Calculates the average of all non-null session_ratings for a book
-    and updates the user_books.effective_user_rating column.
-    """
-    # 1. Get the average of valid ratings
-    row = conn.execute("""
-        SELECT AVG(session_rating) as avg_val 
-        FROM reading_logs 
-        WHERE user_book_id = ? AND session_rating IS NOT NULL AND session_rating > 0
-    """, (user_book_id,)).fetchone()
-    
-    new_rating = row['avg_val'] if row['avg_val'] else None
-    
-    # 2. Update the parent book record
-    conn.execute("""
-        UPDATE user_books 
-        SET effective_user_rating = ? 
-        WHERE id = ?
-    """, (new_rating, user_book_id))
 
 # --- CUSTOM ERROR HANDLERS ---
 @app.exception_handler(404)
@@ -575,8 +532,8 @@ async def book_detail(request: Request, id: int):
         ORDER BY t.name
     """, (book['book_id'],)).fetchall()
 
-    # --- FETCH RELATIONS ---
-    # 1. Outgoing (Source = Current Book)
+    # --- FETCH RELATIONS (UPDATED LOGIC) ---
+    # 1. Outgoing (I point to them)
     outgoing = conn.execute("""
         SELECT r.id as relation_id, r.relation_type, b.title, ub.id as related_inventory_id, b.cover_url, b.cover_path
         FROM book_relations r
@@ -585,7 +542,7 @@ async def book_detail(request: Request, id: int):
         WHERE r.source_book_id = ?
     """, (book['book_id'],)).fetchall()
 
-    # 2. Incoming (Target = Current Book)
+    # 2. Incoming (They point to me)
     incoming = conn.execute("""
         SELECT r.id as relation_id, r.relation_type, b.title, ub.id as related_inventory_id, b.cover_url, b.cover_path
         FROM book_relations r
@@ -594,11 +551,28 @@ async def book_detail(request: Request, id: int):
         WHERE r.target_book_id = ?
     """, (book['book_id'],)).fetchall()
 
-    # Helper to process cover logic for relation list
+    # Helper to apply the smart labels (Uses imported RELATION_MAP)
     def prep_relation(r, is_incoming=False):
         d = dict(r)
-        # Handle Local Cover
+        
+        # 1. Handle Covers
         if d.get('cover_path'): d['cover_url'] = d['cover_path']
+        
+        # 2. Handle Smart Labels
+        raw_type = d['relation_type']
+        
+        # Get the config tuple, default to raw text if not found
+        labels = RELATION_MAP.get(raw_type, (raw_type, raw_type))
+        
+        if is_incoming:
+            # If I am the target, use the REVERSE label (Index 1)
+            d['label'] = labels[1]
+            d['direction_icon'] = "←" # Visual cue (optional)
+        else:
+            # If I am the source, use the FORWARD label (Index 0)
+            d['label'] = labels[0]
+            d['direction_icon'] = "→" # Visual cue (optional)
+
         d['is_incoming'] = is_incoming
         return d
 
@@ -616,10 +590,10 @@ async def book_detail(request: Request, id: int):
         "request": request, 
         "book": book, 
         "logs": logs,
-        "tags": tags,           # The tags this specific book HAS
-        "all_tags": all_tags,   # The list of ALL tags (for the dropdown)
-        "relations": relations, # The list of related books
-        "all_books_list": all_books_list, # For the relation datalist
+        "tags": tags,           
+        "all_tags": all_tags,   
+        "relations": relations, 
+        "all_books_list": all_books_list, 
         "formats_owned": book['formats'],
         "calculated_rating": calculated_rating 
     })
@@ -652,8 +626,6 @@ async def remove_tag_from_book(book_id: int = Form(...), user_book_id: int = For
     conn = get_db_connection()
     
     conn.execute("DELETE FROM book_tags WHERE book_id = ? AND tag_id = ?", (book_id, tag_id))
-    
-    # Optional: Delete tag definition if no longer used? (Kept simple for now)
     
     conn.commit()
     conn.close()
@@ -722,7 +694,6 @@ async def delete_book(id: int):
     
     if count == 0:
         cursor.execute("DELETE FROM books WHERE id = ?", (book_id,))
-        # Also clean up tags logic if strict, but CASCADE handles book_tags.
         print(f"🗑️ Deleted orphaned book definition (ID: {book_id})")
         
     conn.commit()

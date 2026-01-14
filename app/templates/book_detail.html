@@ -155,14 +155,8 @@
                 
                 <div class="flex-grow min-w-0">
                     <div class="flex items-center flex-wrap gap-1 mb-1">
-                        {% if rel.is_incoming %}
-                            <span class="bg-gray-100 text-gray-500 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border border-gray-200">
-                                Linked from
-                            </span>
-                        {% endif %}
-                        
                         <span class="bg-purple-50 text-purple-700 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border border-purple-100">
-                            {{ rel.relation_type|replace('_', ' ') }}
+                            {{ rel.direction_icon }} {{ rel.label }}
                         </span>
                     </div>
                     
@@ -171,10 +165,10 @@
                     </a>
                 </div>
 
-                <form action="/api/relation/remove" method="post" class="ml-2">
+                <form action="/api/relation/remove" method="post" class="ml-auto pl-2 border-l border-gray-100">
                     <input type="hidden" name="relation_id" value="{{ rel.relation_id }}">
                     <input type="hidden" name="user_book_id" value="{{ book.id }}">
-                    <button type="submit" class="text-gray-300 hover:text-red-500 font-bold px-2" title="Remove Link">
+                    <button type="submit" class="text-slate-400 hover:text-red-600 hover:bg-red-50 rounded px-2 py-1 transition text-lg font-bold leading-none" title="Remove Link">
                         &times;
                     </button>
                 </form>
@@ -449,6 +443,8 @@
                                 <option value="more_detailed_than">More Detailed Than...</option>
                                 <option value="simpler_than">Simpler Than...</option>
                                 <option value="inspired_by">Inspired By...</option>
+                                <option value="better_than">Better Than...</option>
+                                <option value="worse_than">Worse Than...</option>
                             </optgroup>
                         </select>
                     </div>
