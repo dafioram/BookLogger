@@ -23,4 +23,4 @@ EXPOSE 8000
 
 # Start the application using Uvicorn
 # We bind to 0.0.0.0 to allow access from outside the container
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--proxy-headers", "--host", "0.0.0.0", "--port", "8000"]
