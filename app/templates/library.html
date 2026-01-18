@@ -11,6 +11,15 @@
             <form method="get" class="flex flex-col md:flex-row gap-2 flex-shrink-0">
                 {% if query %}<input type="hidden" name="q" value="{{ query }}">{% endif %}
                 
+                <select name="filter_format" onchange="this.form.submit()" class="w-full md:w-auto border border-gray-300 rounded px-3 py-2 bg-white text-sm font-bold text-slate-700 outline-none focus:border-blue-500 shadow-sm cursor-pointer hover:border-blue-400 transition">
+                    <option value="all" {% if current_filter == 'all' %}selected{% endif %}>📚 All Books</option>
+                    <option value="owned" {% if current_filter == 'owned' %}selected{% endif %}>✅ Owned (Any)</option>
+                    <option disabled>──────</option>
+                    <option value="physical" {% if current_filter == 'physical' %}selected{% endif %}>📖 Physical Only</option>
+                    <option value="audio" {% if current_filter == 'audio' %}selected{% endif %}>🎧 Audio Only</option>
+                    <option value="digital" {% if current_filter == 'digital' %}selected{% endif %}>📱 Digital/Kindle</option>
+                </select>
+
                 <select name="tag" onchange="this.form.submit()" class="w-full md:w-auto border border-gray-300 rounded px-3 py-2 bg-white text-sm font-bold text-slate-700 outline-none focus:border-blue-500 shadow-sm cursor-pointer hover:border-blue-400 transition">
                     <option value="">🏷️ All Tags</option>
                     {% for tag in all_tags %}
@@ -30,6 +39,7 @@
             <form action="/library" method="get" class="flex w-full md:w-auto shadow-sm">
                 {% if sort %}<input type="hidden" name="sort" value="{{ sort }}">{% endif %}
                 {% if selected_tag %}<input type="hidden" name="tag" value="{{ selected_tag }}">{% endif %}
+                {% if current_filter and current_filter != 'all' %}<input type="hidden" name="filter_format" value="{{ current_filter }}">{% endif %}
                 
                 <input type="text" name="q" value="{{ query }}" placeholder="Search title or author..." class="border border-gray-300 rounded-l px-4 py-2 text-sm w-full md:w-64 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500">
                 <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-r hover:bg-blue-700 text-sm font-bold transition duration-150 ease-in-out">Search</button>
@@ -70,7 +80,7 @@
                 </div>
                 
                 {% if not book.is_owned and ('Libby Audiobook' in book.formats or 'Libby eBook' in book.formats or 'Libby Physical' in book.formats) %}
-                     <span class="absolute top-2 left-0 bg-yellow-400 text-yellow-900 text-[10px] font-bold px-2 py-0.5 rounded-r shadow-md border-y border-r border-yellow-500 tracking-wider">LIBBY</span>
+                      <span class="absolute top-2 left-0 bg-yellow-400 text-yellow-900 text-[10px] font-bold px-2 py-0.5 rounded-r shadow-md border-y border-r border-yellow-500 tracking-wider">LIBBY</span>
                 {% endif %}
             </div>
             
@@ -95,7 +105,7 @@
     <div class="flex justify-center items-center gap-4 mt-12 mb-8">
         
         {% if current_page > 1 %}
-        <a href="/library?page={{ current_page - 1 }}&q={{ query }}&sort={{ sort }}{% if selected_tag %}&tag={{ selected_tag }}{% endif %}" 
+        <a href="/library?page={{ current_page - 1 }}&q={{ query }}&sort={{ sort }}{% if selected_tag %}&tag={{ selected_tag }}{% endif %}{% if current_filter %}&filter_format={{ current_filter }}{% endif %}" 
            class="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg font-bold hover:bg-gray-50 hover:text-blue-600 transition shadow-sm">
             ← Previous
         </a>
@@ -110,7 +120,7 @@
         </span>
 
         {% if current_page < total_pages %}
-        <a href="/library?page={{ current_page + 1 }}&q={{ query }}&sort={{ sort }}{% if selected_tag %}&tag={{ selected_tag }}{% endif %}" 
+        <a href="/library?page={{ current_page + 1 }}&q={{ query }}&sort={{ sort }}{% if selected_tag %}&tag={{ selected_tag }}{% endif %}{% if current_filter %}&filter_format={{ current_filter }}{% endif %}" 
            class="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg font-bold hover:bg-gray-50 hover:text-blue-600 transition shadow-sm">
             Next →
         </a>

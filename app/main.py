@@ -230,7 +230,7 @@ async def top_books_page(request: Request):
     return templates.TemplateResponse("top_books.html", {"request": request, "books": books})
 
 @app.get("/library", response_class=HTMLResponse)
-async def library(request: Request, q: str = "", sort: str = "title_asc", tag: str = None, page: int = 1):
+async def library(request: Request, q: str = "", sort: str = "title_asc", tag: str = None, filter_format: str = "all", page: int = 1):
     conn = get_db_connection()
     
     ITEMS_PER_PAGE = 24
@@ -245,9 +245,6 @@ async def library(request: Request, q: str = "", sort: str = "title_asc", tag: s
         selected_tag_id = int(tag)
 
     # --- BUILD QUERY PARTS ---
-    # We build the "core" of the query (FROM + WHERE) separately so we can reuse it
-    # for both counting the total results and fetching the specific page.
-    
     base_query = """
         FROM user_books ub
         JOIN books b ON ub.book_id = b.id
@@ -266,6 +263,18 @@ async def library(request: Request, q: str = "", sort: str = "title_asc", tag: s
         base_query += " JOIN book_tags bt ON b.id = bt.book_id "
         conditions.append("bt.tag_id = ?")
         params.append(selected_tag_id)
+
+    # NEW: Granular Format Filtering
+    if filter_format == "owned":
+        conditions.append("ub.is_owned = 1")
+    elif filter_format == "physical":
+        conditions.append("ub.formats_owned LIKE '%Physical%'")
+    elif filter_format == "audio":
+        # Matches Audible OR Libby Audiobook
+        conditions.append("(ub.formats_owned LIKE '%Audible%' OR ub.formats_owned LIKE '%Audiobook%')")
+    elif filter_format == "digital":
+        # Matches Kindle OR eBook
+        conditions.append("(ub.formats_owned LIKE '%Kindle%' OR ub.formats_owned LIKE '%eBook%')")
 
     # Apply Conditions
     where_clause = ""
@@ -312,6 +321,7 @@ async def library(request: Request, q: str = "", sort: str = "title_asc", tag: s
         "sort": sort,
         "all_tags": all_tags,
         "selected_tag": selected_tag_id,
+        "current_filter": filter_format,
         # Pagination Data
         "current_page": page,
         "total_pages": total_pages,
