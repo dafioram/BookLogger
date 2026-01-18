@@ -24,8 +24,8 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         google_id TEXT UNIQUE,
         isbn13 TEXT,
-        asin TEXT,              -- Amazon ID
-        olid TEXT,              -- Open Library ID
+        asin TEXT,
+        olid TEXT,
         goodreads_id TEXT,
         title TEXT NOT NULL,
         subtitle TEXT,
@@ -53,16 +53,25 @@ def init_db():
         book_id INTEGER NOT NULL,
         read_status TEXT DEFAULT 'Unread',
         shelf_status TEXT DEFAULT 'Shelved',
-        effective_user_rating REAL, -- Calculated average from log sessions
+        on_deck_order INTEGER,  -- NEW: For sorting the dashboard
+        effective_user_rating REAL, 
         is_owned BOOLEAN DEFAULT 0,
         formats_owned TEXT,
         inventory_notes TEXT,
-        acquired_source TEXT,   -- e.g., "Amazon", "Gift", "Used Bookstore"
+        acquired_source TEXT,
         acquired_date DATE,      
         date_added DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(book_id) REFERENCES books(id)
     )
     ''')
+
+    # --- MIGRATION: Ensure on_deck_order exists for old databases ---
+    try:
+        cursor.execute("ALTER TABLE user_books ADD COLUMN on_deck_order INTEGER")
+        print("✅ Added 'on_deck_order' column to database.")
+    except sqlite3.OperationalError:
+        # Column likely already exists, ignore
+        pass
     
     # 3. Reading Logs
     cursor.execute('''
@@ -76,12 +85,12 @@ def init_db():
         is_dnf BOOLEAN DEFAULT 0,
         pace TEXT,
         log_notes TEXT,
-        session_rating REAL,  -- The rating for this specific read
+        session_rating REAL,
         FOREIGN KEY(user_book_id) REFERENCES user_books(id)
     )
     ''')
 
-    # 4. Tags Definition (The "Bucket")
+    # 4. Tags Definition
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS tags (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -89,7 +98,7 @@ def init_db():
     )
     ''')
 
-    # 5. Book-Tag Links (The "Bridge")
+    # 5. Book-Tag Links
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS book_tags (
         book_id INTEGER,
@@ -100,7 +109,7 @@ def init_db():
     )
     ''')
 
-    # 6. Book Relations (The Knowledge Graph)
+    # 6. Book Relations
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS book_relations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
