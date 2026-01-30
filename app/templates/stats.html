@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto">
+
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-2xl md:text-3xl font-bold text-slate-800">Reading Statistics</h1>
+        <form method="get" class="flex items-center space-x-2">
+            <label class="text-sm font-bold text-gray-600">Year:</label>
+            <select name="year" onchange="this.form.submit()" class="border border-gray-300 rounded px-3 py-1 bg-white font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none">
+                {% for y in available_years %}
+                <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
+                {% endfor %}
+            </select>
+        </form>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mb-8">
+        <div class="bg-blue-600 text-white p-6 rounded-lg shadow-lg flex flex-col justify-center">
+            <div class="text-4xl font-bold">{{ data_books|sum }}</div>
+            <div class="text-blue-100 uppercase text-xs font-bold tracking-wider">Books Finished</div>
+        </div>
+        <div class="bg-purple-600 text-white p-6 rounded-lg shadow-lg flex flex-col justify-center">
+            <div class="text-4xl font-bold">{{ data_hours|sum }}</div>
+            <div class="text-purple-100 uppercase text-xs font-bold tracking-wider">Hours Read</div>
+        </div>
+        <div class="bg-emerald-600 text-white p-6 rounded-lg shadow-lg flex flex-col justify-center">
+            <div class="text-4xl font-bold">{{ data_pages|sum }}</div>
+            <div class="text-emerald-100 uppercase text-xs font-bold tracking-wider">Pages Read</div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
+        
+        <div class="bg-white p-4 md:p-6 rounded-lg shadow border border-gray-200">
+            <h3 class="font-bold text-gray-500 uppercase text-xs mb-4 text-center">Books per Month</h3>
+            <div class="h-64 w-full">
+                <canvas id="booksChart"></canvas>
+            </div>
+        </div>
+
+        <div class="bg-white p-4 md:p-6 rounded-lg shadow border border-gray-200">
+            <h3 class="font-bold text-gray-500 uppercase text-xs mb-4 text-center">Hours per Month</h3>
+            <div class="h-64 w-full">
+                <canvas id="hoursChart"></canvas>
+            </div>
+        </div>
+        
+        <div class="bg-white p-4 md:p-6 rounded-lg shadow border border-gray-200">
+            <h3 class="font-bold text-gray-500 uppercase text-xs mb-4 text-center">Pages per Month</h3>
+            <div class="h-64 w-full">
+                <canvas id="pagesChart"></canvas>
+            </div>
+        </div>
+
+        <div class="bg-white p-4 md:p-6 rounded-lg shadow border border-gray-200">
+            <h3 class="font-bold text-gray-500 uppercase text-xs mb-4 text-center">Format Breakdown</h3>
+            <div class="h-64 w-full flex justify-center">
+                <canvas id="formatChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-lg shadow border border-gray-200 overflow-hidden mb-12">
+        <div class="bg-slate-50 px-4 md:px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+            <h2 class="font-bold text-slate-800 text-lg">Reading Log - {{ selected_year }}</h2>
+            <span class="text-xs font-bold text-gray-400 uppercase tracking-wider">Jan → Dec</span>
+        </div>
+        
+        <div class="divide-y divide-gray-100">
+            {% for log in logs %}
+            <div class="p-3 md:p-4 flex items-center hover:bg-slate-50 transition group">
+                
+                <div class="w-12 md:w-24 flex-shrink-0 text-right pr-3 md:pr-6 border-r border-gray-100 mr-3 md:mr-6">
+                    <div class="text-xs md:text-sm font-bold text-slate-600">{{ log.date_finished[5:] }}</div>
+                    <div class="hidden md:block text-xs text-gray-400 uppercase">{{ selected_year }}</div>
+                </div>
+
+                <div class="flex-shrink-0 mr-3 md:mr-4">
+                    <a href="/book/{{ log.book_id }}">
+                        <img src="{{ log.cover_url }}" class="w-10 h-14 md:w-12 md:h-16 object-cover rounded shadow-sm">
+                    </a>
+                </div>
+
+                <div class="flex-grow min-w-0 mr-2">
+                    <a href="/book/{{ log.book_id }}" class="text-slate-800 font-bold hover:text-blue-600 leading-tight block text-sm md:text-lg mb-1 whitespace-normal">
+                        {{ log.title }}
+                    </a>
+                    <div class="text-xs text-gray-500 truncate mb-1">{{ log.author }}</div>
+                    
+                    <div class="flex flex-wrap gap-2">
+                        <span class="text-[10px] px-2 py-0.5 rounded-full border uppercase tracking-wide font-bold
+                            {% if log.format_consumed == 'Physical' %}bg-blue-50 text-blue-700 border-blue-100
+                            {% elif log.format_consumed == 'Kindle' %}bg-purple-50 text-purple-700 border-purple-100
+                            {% elif 'Audio' in log.format_consumed or log.format_consumed == 'Audible' %}bg-green-50 text-green-700 border-green-100
+                            {% else %}bg-gray-50 text-gray-600 border-gray-200{% endif %}">
+                            {{ log.format_consumed }}
+                        </span>
+
+                        {% if log.is_borrowed %}
+                        <span class="bg-orange-100 text-orange-800 text-[10px] px-2 py-0.5 rounded-full border border-orange-200 uppercase tracking-wide font-bold">
+                            Borrowed
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="flex-shrink-0 text-right w-14 md:w-20">
+                    {% if log.user_rating %}
+                        <div class="text-yellow-500 font-bold text-xs md:text-sm">★ {{ log.user_rating }}</div>
+                    {% else %}
+                        <div class="text-gray-300 text-[10px] md:text-xs font-bold uppercase">No Rate</div>
+                    {% endif %}
+                    <div class="text-[10px] md:text-xs text-gray-400 mt-1 font-mono">{{ log.hours_read }}h</div>
+                </div>
+
+            </div>
+            {% else %}
+            <div class="p-10 text-center text-gray-500 italic">
+                No books logged for {{ selected_year }} yet.
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    const labels = {{ labels|tojson }};
+    const commonOptions = {
+        responsive: true,
+        maintainAspectRatio: false, // Critical for keeping charts inside h-64
+        scales: { y: { beginAtZero: true } }
+    };
+    
+    // 1. Books
+    new Chart(document.getElementById('booksChart'), {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Books',
+                data: {{ data_books|tojson }},
+                backgroundColor: '#2563EB',
+                borderRadius: 4
+            }]
+        },
+        options: {
+            ...commonOptions,
+            scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+        }
+    });
+
+    // 2. Hours
+    new Chart(document.getElementById('hoursChart'), {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Hours',
+                data: {{ data_hours|tojson }},
+                backgroundColor: '#9333EA',
+                borderRadius: 4
+            }]
+        },
+        options: commonOptions
+    });
+
+    // 3. Pages
+    new Chart(document.getElementById('pagesChart'), {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Pages',
+                data: {{ data_pages|tojson }},
+                backgroundColor: '#10B981', 
+                borderRadius: 4
+            }]
+        },
+        options: commonOptions
+    });
+
+    // 4. Formats (Pie Chart)
+    new Chart(document.getElementById('formatChart'), {
+        type: 'doughnut',
+        data: {
+            labels: {{ format_labels|tojson }},
+            datasets: [{
+                data: {{ format_counts|tojson }},
+                backgroundColor: ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#6366f1'],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false, // Keeps pie chart inside h-64
+            plugins: {
+                legend: { position: 'right' }
+            }
+        }
+    });
+</script>
+{% endblock %}

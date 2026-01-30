@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="text-center py-20">
+    <div class="text-6xl mb-4">🕵️‍♂️</div>
+    <h1 class="text-4xl font-bold text-slate-800 mb-2">Page Not Found</h1>
+    <p class="text-gray-600 mb-8 text-lg">
+        We couldn't find the book or page you were looking for.
+    </p>
+    
+    <div class="space-x-4">
+        <a href="/" class="bg-slate-800 text-white px-6 py-3 rounded-lg font-bold hover:bg-slate-700 transition">
+            Dashboard
+        </a>
+        <a href="/library" class="bg-gray-200 text-gray-700 px-6 py-3 rounded-lg font-bold hover:bg-gray-300 transition border border-gray-300">
+            Back to Library
+        </a>
+    </div>
+</div>
+{% endblock %}

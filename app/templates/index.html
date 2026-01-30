@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-10">
+
+    <div class="flex justify-between items-center">
+        <h1 class="text-3xl font-bold text-slate-800">Dashboard</h1>
+        
+        <form action="/system/backup" method="post" onsubmit="return confirm('Create a database backup?');">
+            <button type="submit" class="bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1 rounded text-xs font-bold border border-gray-300 transition flex items-center">
+                <span class="mr-1">💾</span> Backup
+            </button>
+        </form>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200 border-l-4 border-l-blue-500">
+            <div class="text-gray-400 text-xs font-bold uppercase tracking-wider mb-1">Books Read</div>
+            <div class="text-3xl font-bold text-slate-800">{{ stats.books_read }}</div>
+        </div>
+
+        <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200 border-l-4 border-l-purple-500">
+            <div class="text-gray-400 text-xs font-bold uppercase tracking-wider mb-1">Hours Read</div>
+            <div class="text-3xl font-bold text-slate-800">
+                {{ stats.total_hours|round(1) if stats.total_hours else 0 }}
+            </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200 border-l-4 border-l-emerald-500">
+            <div class="text-gray-400 text-xs font-bold uppercase tracking-wider mb-1">Library Size</div>
+            <div class="text-3xl font-bold text-slate-800">{{ total_books }}</div>
+        </div>
+    </div>
+
+    <div>
+        <div class="flex justify-between items-end mb-4">
+            <h2 class="text-xl font-bold text-slate-800 flex items-center">
+                🔥 On Deck 
+                <span class="ml-3 text-[10px] font-bold text-gray-400 bg-gray-100 px-2 py-1 rounded uppercase tracking-wide">
+                    Drag to Reorder
+                </span>
+            </h2>
+            <a href="/library" class="text-xs text-blue-600 font-bold hover:underline">View Full Library &rarr;</a>
+        </div>
+        
+        {% if on_deck %}
+        <div id="on-deck-grid" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            {% for book in on_deck %}
+            <div class="group relative cursor-grab active:cursor-grabbing" data-id="{{ book.id }}">
+                <a href="/book/{{ book.id }}" class="block">
+                    <div class="aspect-[2/3] w-full bg-gray-100 rounded-lg shadow-sm border border-gray-200 overflow-hidden relative mb-2 transition transform group-hover:-translate-y-1 group-hover:shadow-md">
+                        <img src="{{ book.cover_url }}" class="w-full h-full object-cover" loading="lazy">
+                        
+                        <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-5 transition flex items-center justify-center">
+                        </div>
+                    </div>
+                    
+                    <h3 class="font-bold text-slate-800 text-xs leading-tight line-clamp-2 group-hover:text-blue-600 transition">
+                        {{ book.title }}
+                    </h3>
+                </a>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="bg-gray-50 rounded-lg border-2 border-dashed border-gray-200 p-10 text-center">
+            <p class="text-gray-400 text-sm font-medium mb-2">Your queue is empty.</p>
+            <a href="/library" class="text-blue-600 text-sm font-bold hover:underline">Go to Library to add books</a>
+        </div>
+        {% endif %}
+    </div>
+
+    <div>
+        <h2 class="text-xl font-bold text-slate-800 mb-4">Recent Activity</h2>
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 divide-y divide-gray-100">
+            {% for log in recent %}
+            <div class="p-4 flex justify-between items-center hover:bg-gray-50 transition">
+                <div>
+                    <h3 class="font-bold text-slate-800 text-sm">{{ log.title }}</h3>
+                    <p class="text-xs text-gray-500">{{ log.date_finished }}</p>
+                </div>
+                <div class="text-right">
+                    {% if log.is_dnf %}
+                        <span class="bg-red-50 text-red-600 font-bold text-[10px] px-2 py-1 rounded border border-red-100">DNF</span>
+                    {% else %}
+                        <span class="font-bold text-slate-700 text-sm">{{ log.hours_read }} hrs</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% else %}
+            <div class="p-8 text-center text-gray-500 text-sm italic">No reading logs found yet.</div>
+            {% endfor %}
+        </div>
+    </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+
+<script>
+    const grid = document.getElementById('on-deck-grid');
+    if (grid) {
+        new Sortable(grid, {
+            animation: 150,
+            ghostClass: 'opacity-50', // Visual style for the item being dragged
+            delay: 100, // Slight delay prevents accidental drags on touch screens
+            delayOnTouchOnly: true,
+            onEnd: function (evt) {
+                // 1. Get the new order of IDs from the DOM
+                const itemIds = Array.from(grid.children).map(item => item.getAttribute('data-id'));
+                
+                // 2. Send to backend to save
+                fetch('/api/reorder_on_deck', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(itemIds),
+                })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Order saved:', data);
+                })
+                .catch((error) => {
+                    console.error('Error saving order:', error);
+                });
+            }
+        });
+    }
+</script>
+{% endblock %}

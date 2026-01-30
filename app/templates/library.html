@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto">
+
+    <div class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+        <h1 class="text-3xl font-bold text-slate-800">My Library</h1>
+        
+        <div class="flex flex-col md:flex-row space-y-2 md:space-y-0 md:space-x-4 w-full md:w-auto">
+            
+            <form method="get" class="flex flex-col md:flex-row gap-2 flex-shrink-0">
+                {% if query %}<input type="hidden" name="q" value="{{ query }}">{% endif %}
+                
+                <select name="filter_format" onchange="this.form.submit()" class="w-full md:w-auto border border-gray-300 rounded px-3 py-2 bg-white text-sm font-bold text-slate-700 outline-none focus:border-blue-500 shadow-sm cursor-pointer hover:border-blue-400 transition">
+                    <option value="all" {% if current_filter == 'all' %}selected{% endif %}>📚 All Books</option>
+                    <option value="owned" {% if current_filter == 'owned' %}selected{% endif %}>✅ Owned (Any)</option>
+                    <option disabled>──────</option>
+                    <option value="physical" {% if current_filter == 'physical' %}selected{% endif %}>📖 Physical Only</option>
+                    <option value="audio" {% if current_filter == 'audio' %}selected{% endif %}>🎧 Audio Only</option>
+                    <option value="digital" {% if current_filter == 'digital' %}selected{% endif %}>📱 Digital/Kindle</option>
+                </select>
+
+                <select name="tag" onchange="this.form.submit()" class="w-full md:w-auto border border-gray-300 rounded px-3 py-2 bg-white text-sm font-bold text-slate-700 outline-none focus:border-blue-500 shadow-sm cursor-pointer hover:border-blue-400 transition">
+                    <option value="">🏷️ All Tags</option>
+                    {% for tag in all_tags %}
+                    <option value="{{ tag.id }}" {% if selected_tag == tag.id %}selected{% endif %}>
+                        {{ tag.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+
+                <select name="sort" onchange="this.form.submit()" class="w-full md:w-auto border border-gray-300 rounded px-3 py-2 bg-white text-sm font-bold text-slate-700 outline-none focus:border-blue-500 shadow-sm cursor-pointer hover:border-blue-400 transition">
+                    <option value="title_asc" {% if sort == 'title_asc' %}selected{% endif %}>🔤 Title (A-Z)</option>
+                    <option value="date_desc" {% if sort == 'date_desc' %}selected{% endif %}>📅 Date Added</option>
+                    <option value="author_asc" {% if sort == 'author_asc' %}selected{% endif %}>👤 Author (A-Z)</option>
+                </select>
+            </form>
+
+            <form action="/library" method="get" class="flex w-full md:w-auto shadow-sm">
+                {% if sort %}<input type="hidden" name="sort" value="{{ sort }}">{% endif %}
+                {% if selected_tag %}<input type="hidden" name="tag" value="{{ selected_tag }}">{% endif %}
+                {% if current_filter and current_filter != 'all' %}<input type="hidden" name="filter_format" value="{{ current_filter }}">{% endif %}
+                
+                <input type="text" name="q" value="{{ query }}" placeholder="Search title or author..." class="border border-gray-300 rounded-l px-4 py-2 text-sm w-full md:w-64 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500">
+                <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-r hover:bg-blue-700 text-sm font-bold transition duration-150 ease-in-out">Search</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-x-6 gap-y-10">
+        {% for book in books %}
+        <a href="/book/{{ book.id }}" class="group block relative">
+            <div class="relative mb-3 transform group-hover:-translate-y-1 transition duration-200 ease-out">
+                <div class="aspect-[2/3] w-full bg-gray-100 rounded-lg shadow-md overflow-hidden border border-gray-200">
+                    <img src="{{ book.cover_url }}" loading="lazy" class="w-full h-full object-cover group-hover:brightness-105 transition">
+                </div>
+                
+                <div class="absolute bottom-1 right-1 flex gap-1">
+                    {% if 'Physical' in book.formats %}
+                        <span class="bg-slate-900 text-white w-5 h-5 flex items-center justify-center rounded-full text-[10px] shadow-sm border border-slate-700 opacity-90" title="Physical">📖</span>
+                    {% endif %}
+                    {% if 'Audible' in book.formats %}
+                        <span class="bg-orange-500 text-white w-5 h-5 flex items-center justify-center rounded-full text-[10px] shadow-sm border border-orange-600 opacity-90" title="Audible">🎧</span>
+                    {% endif %}
+                    {% if 'Kindle' in book.formats %}
+                        <span class="bg-blue-600 text-white w-5 h-5 flex items-center justify-center rounded-full text-[10px] shadow-sm border border-blue-700 opacity-90" title="Kindle">📱</span>
+                    {% endif %}
+                </div>
+
+                <div class="absolute top-2 right-2 flex flex-col items-end gap-1">
+                    {% if book.shelf_status == 'On Deck' %}
+                        <span class="bg-blue-500 text-white text-[10px] uppercase font-bold px-2 py-0.5 rounded-full shadow-md border border-blue-400 tracking-wide">Next</span>
+                    {% endif %}
+
+                    {% if book.read_status == 'Read' %}
+                        <span class="bg-emerald-500 text-white w-6 h-6 flex items-center justify-center rounded-full shadow-md border border-emerald-600 font-bold text-xs">✓</span>
+                    {% elif book.read_status == 'DNF' %}
+                        <span class="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-md border border-red-600">DNF</span>
+                    {% endif %}
+                </div>
+                
+                {% if not book.is_owned and ('Libby Audiobook' in book.formats or 'Libby eBook' in book.formats or 'Libby Physical' in book.formats) %}
+                      <span class="absolute top-2 left-0 bg-yellow-400 text-yellow-900 text-[10px] font-bold px-2 py-0.5 rounded-r shadow-md border-y border-r border-yellow-500 tracking-wider">LIBBY</span>
+                {% endif %}
+            </div>
+            
+            <div class="space-y-1">
+                <h3 class="font-bold text-slate-800 text-sm leading-tight group-hover:text-blue-600 line-clamp-2 transition-colors">
+                    {{ book.title }}
+                </h3>
+                <p class="text-xs text-slate-500 font-medium truncate">{{ book.author }}</p>
+                
+                {% if book.effective_user_rating %}
+                <div class="flex items-center text-yellow-500 text-xs font-bold pt-1">
+                    <span>★</span>
+                    <span class="ml-1 text-slate-600">{{ book.effective_user_rating }}</span>
+                </div>
+                {% endif %}
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+
+    {% if total_pages > 1 %}
+    <div class="flex justify-center items-center gap-4 mt-12 mb-8">
+        
+        {% if current_page > 1 %}
+        <a href="/library?page={{ current_page - 1 }}&q={{ query }}&sort={{ sort }}{% if selected_tag %}&tag={{ selected_tag }}{% endif %}{% if current_filter %}&filter_format={{ current_filter }}{% endif %}" 
+           class="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg font-bold hover:bg-gray-50 hover:text-blue-600 transition shadow-sm">
+            ← Previous
+        </a>
+        {% else %}
+        <span class="bg-gray-100 border border-gray-200 text-gray-400 px-4 py-2 rounded-lg font-bold cursor-not-allowed">
+            ← Previous
+        </span>
+        {% endif %}
+
+        <span class="text-gray-600 font-medium text-sm">
+            Page <strong class="text-slate-800">{{ current_page }}</strong> of <strong>{{ total_pages }}</strong>
+        </span>
+
+        {% if current_page < total_pages %}
+        <a href="/library?page={{ current_page + 1 }}&q={{ query }}&sort={{ sort }}{% if selected_tag %}&tag={{ selected_tag }}{% endif %}{% if current_filter %}&filter_format={{ current_filter }}{% endif %}" 
+           class="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg font-bold hover:bg-gray-50 hover:text-blue-600 transition shadow-sm">
+            Next →
+        </a>
+        {% else %}
+        <span class="bg-gray-100 border border-gray-200 text-gray-400 px-4 py-2 rounded-lg font-bold cursor-not-allowed">
+            Next →
+        </span>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% if not books %}
+    <div class="text-center py-20">
+        <div class="text-4xl mb-4">📚</div>
+        <h3 class="text-lg font-bold text-gray-600 mb-2">No books found</h3>
+        <p class="text-gray-400 text-sm">
+            {% if selected_tag %}
+                No books match the tag <strong>selected</strong>.
+            {% else %}
+                Try adjusting your search or add a new book.
+            {% endif %}
+        </p>
+        <a href="/search" class="inline-block mt-4 text-blue-600 hover:underline font-bold text-sm">Go to Add Book &rarr;</a>
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}

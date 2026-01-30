@@ -1,0 +1,15 @@
+services:
+  app:
+    container_name: booklogger
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      # If PORT is not set in .env, default to 8000 on the host
+      - "${PORT:-8000}:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      # Default to UTC if not set
+      - TZ=${TZ:-UTC}

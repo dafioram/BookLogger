@@ -1,0 +1,49 @@
+<div class="mb-6 bg-blue-50 p-4 rounded-lg border border-blue-100 shadow-sm">
+    <label class="block text-xs font-bold text-blue-800 uppercase mb-2">
+        Or paste a direct image link:
+    </label>
+    <form action="/book/{{ book_id }}/set_cover" method="post" class="flex gap-2 w-full">
+        <input 
+            type="url" 
+            name="new_cover_url" 
+            placeholder="https://example.com/image.jpg" 
+            required
+            class="flex-grow border border-blue-200 rounded px-3 py-2 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        >
+        <button type="submit" class="bg-blue-600 text-white text-xs font-bold px-4 py-2 rounded hover:bg-blue-700 transition shadow-sm whitespace-nowrap">
+            Set Cover
+        </button>
+    </form>
+</div>
+
+{% if covers %}
+    <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 border-b border-gray-100 pb-2">
+        Select from Search Results
+    </h4>
+
+    <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-6 animate-fade-in">
+        {% for url in covers %}
+        <form action="/book/{{ book_id }}/set_cover" method="post" class="cursor-pointer group relative">
+            <input type="hidden" name="new_cover_url" value="{{ url }}">
+            
+            <button type="submit" class="w-full block transition transform hover:scale-105 duration-200">
+                <div class="aspect-[2/3] w-full bg-gray-100 rounded-lg overflow-hidden shadow-md border border-gray-200 relative">
+                    <img src="{{ url }}" loading="lazy" class="w-full h-full object-cover">
+                    
+                    <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all flex items-center justify-center">
+                        <span class="text-white opacity-0 group-hover:opacity-100 font-bold bg-black bg-opacity-60 px-3 py-1 rounded-full text-xs uppercase tracking-wide">
+                            Select
+                        </span>
+                    </div>
+                </div>
+            </button>
+        </form>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="flex flex-col items-center justify-center h-48 text-gray-400 border border-dashed border-gray-200 rounded-lg bg-gray-50">
+        <span class="text-3xl mb-2 grayscale opacity-50">🔍</span>
+        <p class="text-sm font-medium text-gray-500">No automated covers found.</p>
+        <p class="text-xs text-gray-400">Please use the manual link option above.</p>
+    </div>
+{% endif %}

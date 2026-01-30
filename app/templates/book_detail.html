@@ -1,0 +1,465 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto">
+    
+    <div class="flex flex-col md:flex-row gap-10 mb-10 items-stretch">
+        
+        <div class="w-full md:w-1/3 flex flex-col items-center flex-shrink-0">
+            
+            <div class="w-64 md:w-80 shadow-xl rounded-lg overflow-hidden mb-6 relative group">
+            <img 
+                src="{{ book.cover_url }}" 
+                class="w-full h-auto object-cover shadow-md"
+                loading="eager"
+                onerror="this.onerror=null;this.src='/static/placeholder.png';"
+            >
+            </div>
+
+            <div class="w-full max-w-xs text-center mt-auto">
+                <button 
+                    onclick="document.getElementById('cover-modal').classList.remove('hidden')"
+                    hx-get="/book/{{ book.book_id }}/cover_options" 
+                    hx-target="#modal-content" 
+                    hx-indicator="#modal-loading"
+                    class="text-xs font-bold text-blue-600 hover:text-blue-800 hover:underline flex items-center justify-center gap-1 mx-auto mb-2"
+                >
+                    <span>🔄 Find Better Cover</span>
+                </button>
+            </div>
+
+        </div>
+
+        <div class="flex-grow text-center md:text-left flex flex-col">
+            
+            {% if book.series_name %}
+            <div class="mb-2">
+                <span class="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded uppercase tracking-wide">
+                    {{ book.series_name }} {% if book.series_index %}#{{ book.series_index }}{% endif %}
+                </span>
+            </div>
+            {% endif %}
+
+            <h1 class="text-4xl md:text-5xl font-bold text-slate-900 mb-1 leading-tight">{{ book.title }}</h1>
+            
+            {% if book.subtitle %}
+            <h2 class="text-xl text-slate-500 font-medium mb-4 italic">{{ book.subtitle }}</h2>
+            {% else %}
+            <div class="mb-4"></div>
+            {% endif %}
+
+            <a href="/author/{{ book.author }}" class="text-2xl text-blue-600 hover:text-blue-800 hover:underline transition mb-6 block">
+                {{ book.author }}
+            </a>
+            
+            <div class="flex justify-center md:justify-start space-x-4 mb-6">
+                <div class="bg-white px-4 py-2 rounded shadow-sm border border-gray-200 text-sm text-gray-600 flex items-center">
+                    <span class="mr-2 text-lg">🌍</span> 
+                    Google: <strong class="ml-1 text-slate-800">{{ book.average_rating or 'N/A' }}</strong>/5
+                </div>
+                <div class="px-4 py-2 rounded shadow-sm border text-sm flex items-center
+                    {% if calculated_rating %}bg-yellow-50 border-yellow-200 text-yellow-800{% else %}bg-gray-50 border-gray-200 text-gray-400{% endif %}">
+                    <span class="mr-2 text-lg">⭐</span>
+                    My Rating: <strong class="ml-1 text-slate-800 text-lg">{{ calculated_rating if calculated_rating else '-' }}</strong>/5
+                </div>
+            </div>
+
+            <div class="text-left mb-4">
+                <h3 class="font-bold text-slate-400 uppercase text-xs mb-1 ml-1">Synopsis</h3>
+                <div class="prose max-w-none text-slate-700 text-base leading-relaxed bg-slate-50 p-6 rounded-lg border border-slate-200 shadow-inner max-h-48 overflow-y-auto">
+                    {{ book.summary | safe }}
+                </div>
+            </div>
+
+            <div class="mt-auto pt-4 border-t border-gray-100 flex flex-wrap gap-4 md:gap-6 text-sm text-slate-500 font-bold uppercase tracking-wider justify-center md:justify-start">
+                <span class="flex items-center"><span class="text-slate-400 mr-2">Year:</span> {{ book.publication_year }}</span>
+                
+                <span class="flex items-center">
+                    <span class="text-slate-400 mr-2">Length:</span> 
+                    {% if book.total_pages and book.total_pages > 0 %}
+                        {{ book.total_pages }} Pages
+                    {% elif book.total_audio_minutes and book.total_audio_minutes > 0 %}
+                        Audio Only
+                    {% else %}
+                        -
+                    {% endif %}
+                </span>
+                
+                {% if book.total_audio_minutes %}
+                <span class="flex items-center">
+                    <span class="text-slate-400 mr-2">Audio:</span> {{ book.total_audio_minutes | format_runtime }}
+                </span>
+                {% endif %}
+                
+                {% if book.genres %}
+                <span class="flex items-center"><span class="text-slate-400 mr-2">Genre:</span> {{ book.genres }}</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <hr class="border-gray-200 mt-10 mb-6">
+
+    <div class="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-8 flex flex-col md:flex-row items-start md:items-center gap-4 shadow-sm">
+        <div class="flex-shrink-0 flex items-center text-slate-500 font-bold uppercase text-xs tracking-wide">
+            <span class="text-lg mr-2">🏷️</span> My Tags:
+        </div>
+        
+        <div class="flex-grow flex flex-wrap items-center gap-2">
+            {% for tag in tags %}
+            <div class="group inline-flex items-center bg-white text-slate-700 text-sm font-medium px-3 py-1 rounded-full border border-slate-300 shadow-sm transition hover:border-blue-300 hover:text-blue-700">
+                <a href="/library?tag={{ tag.id }}" class="hover:text-blue-600 hover:underline mr-1">
+                    {{ tag.name }}
+                </a>
+                
+                <button type="submit" form="remove-tag-{{ tag.id }}" class="ml-1 text-slate-400 hover:text-red-500 focus:outline-none font-bold leading-none" title="Remove Tag">
+                    ×
+                </button>
+            </div>
+            {% endfor %}
+
+            <div class="relative">
+                <input 
+                    type="text" 
+                    list="tags-datalist" 
+                    class="bg-transparent border-b-2 border-slate-200 focus:border-blue-500 outline-none text-sm px-2 py-1 placeholder-slate-400 transition-colors w-32 focus:w-48" 
+                    placeholder="+ Add Tag..."
+                    onkeydown="if(event.key === 'Enter'){ event.preventDefault(); document.getElementById('add-tag-input').value = this.value; document.getElementById('add-tag-form').submit(); }"
+                >
+                <datalist id="tags-datalist">
+                    {% for t in all_tags %}
+                    <option value="{{ t.name }}">
+                    {% endfor %}
+                </datalist>
+            </div>
+        </div>
+    </div>
+
+    <div class="mb-10">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-bold text-slate-800 flex items-center">
+                <span class="mr-2">🔗</span> Connected Books
+            </h2>
+            <button onclick="document.getElementById('relation-modal').classList.remove('hidden')" class="text-xs font-bold text-blue-600 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-3 py-1 rounded-full transition">
+                + Link a Book
+            </button>
+        </div>
+
+        {% if relations %}
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {% for rel in relations %}
+            <div class="flex items-center bg-white p-3 rounded-lg shadow-sm border border-slate-200 group">
+                <div class="flex-shrink-0 w-12 h-16 bg-gray-200 rounded overflow-hidden mr-4 shadow-sm relative">
+                    <img src="{{ rel.cover_url }}" class="w-full h-full object-cover" onerror="this.src='/static/placeholder.png'">
+                </div>
+                
+                <div class="flex-grow min-w-0">
+                    <div class="flex items-center flex-wrap gap-1 mb-1">
+                        <span class="bg-purple-50 text-purple-700 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border border-purple-100">
+                            {{ rel.direction_icon }} {{ rel.label }}
+                        </span>
+                    </div>
+                    
+                    <a href="/book/{{ rel.related_inventory_id if rel.related_inventory_id else '#' }}" class="block text-sm font-bold text-slate-800 hover:text-blue-600 truncate">
+                        {{ rel.title }}
+                    </a>
+                </div>
+
+                <form action="/api/relation/remove" method="post" class="ml-auto pl-2 border-l border-gray-100">
+                    <input type="hidden" name="relation_id" value="{{ rel.relation_id }}">
+                    <input type="hidden" name="user_book_id" value="{{ book.id }}">
+                    <button type="submit" class="text-slate-400 hover:text-red-600 hover:bg-red-50 rounded px-2 py-1 transition text-lg font-bold leading-none" title="Remove Link">
+                        &times;
+                    </button>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-gray-400 text-sm italic bg-slate-50 p-4 rounded border border-slate-100">
+            No connections yet. Link sequels, similar vibes, or contrasting books!
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+        
+        <div class="md:col-span-1 space-y-8">
+            <div class="bg-white p-6 rounded-lg shadow border border-gray-200">
+                <h2 class="font-bold text-slate-800 mb-4 border-b pb-2">Inventory & Status</h2>
+                
+                <form action="/book/{{ book.id }}/update_inventory" method="post" class="space-y-4">
+                    
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Shelf Status</label>
+                        <select name="shelf_status" class="w-full border rounded px-3 py-2 bg-gray-50">
+                            <option value="Shelved" {% if book.shelf_status == 'Shelved' %}selected{% endif %}>📚 Shelved (General)</option>
+                            <option value="On Deck" {% if book.shelf_status == 'On Deck' %}selected{% endif %}>🔥 On Deck (Next Up)</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Owned Formats</label>
+                        <div class="space-y-2">
+                            <label class="flex items-center space-x-2 cursor-pointer">
+                                <input type="checkbox" name="physical" value="1" {% if 'Physical' in formats_owned %}checked{% endif %} class="rounded text-blue-600">
+                                <span class="text-sm">📖 Physical Book</span>
+                            </label>
+                            <label class="flex items-center space-x-2 cursor-pointer">
+                                <input type="checkbox" name="kindle" value="1" {% if 'Kindle' in formats_owned %}checked{% endif %} class="rounded text-blue-600">
+                                <span class="text-sm">📱 Kindle / eBook</span>
+                            </label>
+                            <label class="flex items-center space-x-2 cursor-pointer">
+                                <input type="checkbox" name="audible" value="1" {% if 'Audible' in formats_owned %}checked{% endif %} class="rounded text-blue-600">
+                                <span class="text-sm">🎧 Audible / Audio</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="pt-2 border-t border-dashed">
+                        <label class="block text-xs font-bold text-orange-600 uppercase mb-2">Borrowed / Libby</label>
+                        <div class="space-y-2">
+                            <label class="flex items-center space-x-2 cursor-pointer">
+                                <input type="checkbox" name="libby_audio" value="1" {% if 'Libby Audiobook' in formats_owned %}checked{% endif %} class="rounded text-orange-500">
+                                <span class="text-sm text-gray-600">Libby Audio</span>
+                            </label>
+                            <label class="flex items-center space-x-2 cursor-pointer">
+                                <input type="checkbox" name="libby_ebook" value="1" {% if 'Libby eBook' in formats_owned %}checked{% endif %} class="rounded text-orange-500">
+                                <span class="text-sm text-gray-600">Libby eBook</span>
+                            </label>
+                             <label class="flex items-center space-x-2 cursor-pointer">
+                                <input type="checkbox" name="libby_physical" value="1" {% if 'Libby Physical' in formats_owned %}checked{% endif %} class="rounded text-orange-500">
+                                <span class="text-sm text-gray-600">Libby Physical</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Notes</label>
+                        <textarea name="inventory_notes" rows="3" class="w-full border rounded px-3 py-2 text-sm bg-gray-50">{{ book.inventory_notes or '' }}</textarea>
+                    </div>
+
+                    <button type="submit" class="w-full bg-slate-800 text-white font-bold py-2 rounded hover:bg-slate-700 transition">
+                        Save Changes
+                    </button>
+                </form>
+            </div>
+            
+            <div class="text-center">
+                 <form action="/book/{{ book.id }}/delete" method="post" onsubmit="return confirm('Are you sure? This cannot be undone.');">
+                    <button type="submit" class="text-red-500 text-xs font-bold hover:underline">
+                        Delete Book from Library
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div class="md:col-span-2">
+            
+            <div class="bg-blue-50 p-6 rounded-lg border border-blue-100 mb-8">
+                <h3 class="font-bold text-blue-900 mb-4 flex items-center">
+                    <span class="bg-blue-200 text-blue-800 rounded-full w-6 h-6 flex items-center justify-center text-xs mr-2">➕</span>
+                    Log Reading Session
+                </h3>
+                <form action="/book/{{ book.id }}/add_log" method="post" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    
+                    <div class="md:col-span-1">
+                        <label class="block text-xs font-bold text-blue-800 uppercase mb-1">Date</label>
+                        <input type="date" name="date_finished" required class="w-full border border-blue-200 rounded px-2 py-1 text-sm">
+                        <script>document.getElementsByName('date_finished')[0].valueAsDate = new Date();</script>
+                    </div>
+                    
+                    <div class="md:col-span-1">
+                        <label class="block text-xs font-bold text-blue-800 uppercase mb-1">Hours</label>
+                        <input type="number" step="0.1" name="hours" required class="w-full border border-blue-200 rounded px-2 py-1 text-sm" placeholder="1.5">
+                    </div>
+
+                    <div class="md:col-span-1">
+                        <label class="block text-xs font-bold text-blue-800 uppercase mb-1">Rating (Optional)</label>
+                        <input type="number" step="0.1" min="0" max="5" name="session_rating" class="w-full border border-blue-200 rounded px-2 py-1 text-sm" placeholder="0-5">
+                    </div>
+
+                    <div class="md:col-span-1">
+                        <label class="block text-xs font-bold text-blue-800 uppercase mb-1">Format</label>
+                        <select name="format_consumed" class="w-full border border-blue-200 rounded px-2 py-1 text-sm bg-white">
+                            <option value="Physical">Physical</option>
+                            <option value="Kindle">Kindle / eBook</option>
+                            <option value="Audible">Audible / Audio</option>
+                        </select>
+                    </div>
+
+                    <div class="md:col-span-4">
+                         <label class="flex items-center space-x-2 cursor-pointer bg-blue-100 p-2 rounded border border-blue-200">
+                            <input type="checkbox" name="is_borrowed" value="true" class="rounded text-blue-600 focus:ring-blue-500">
+                            <span class="text-xs font-bold text-blue-900">This was a Borrowed Copy (Libby/Library)</span>
+                        </label>
+                    </div>
+
+                     <div class="md:col-span-4">
+                        <label class="block text-xs font-bold text-blue-800 uppercase mb-1">Session Notes (Optional)</label>
+                        <input type="text" name="notes" class="w-full border border-blue-200 rounded px-2 py-1 text-sm" placeholder="What happened in this session?">
+                    </div>
+
+                    <div class="md:col-span-4 flex items-center justify-between pt-2">
+                        <label class="flex items-center space-x-2 text-red-600 text-sm font-bold cursor-pointer">
+                            <input type="checkbox" name="is_dnf" value="true" class="rounded text-red-600 focus:ring-red-500">
+                            <span>I am DNFing this book (Did Not Finish)</span>
+                        </label>
+
+                        <button type="submit" class="bg-blue-600 text-white px-6 py-1 rounded font-bold hover:bg-blue-700 text-sm">
+                            Log It
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <h3 class="font-bold text-slate-800 mb-4 text-lg">Reading History</h3>
+            <div class="space-y-4">
+                {% for log in logs %}
+                <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200 flex flex-col md:flex-row md:items-center justify-between group">
+                    <div>
+                        <div class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                            <span>{{ log.date_finished }}</span>
+                            <span class="text-gray-300">|</span> 
+                            <span>{{ log.format_consumed }}</span>
+                            
+                            {% if log.is_borrowed %}
+                                <span class="bg-orange-100 text-orange-800 text-[10px] px-2 py-0.5 rounded-full border border-orange-200 uppercase tracking-wide">Borrowed</span>
+                            {% endif %}
+                        </div>
+                        {% if log.log_notes %}
+                        <p class="text-gray-600 text-sm mt-1 italic">"{{ log.log_notes }}"</p>
+                        {% endif %}
+                    </div>
+                    <div class="mt-2 md:mt-0 flex items-center space-x-4">
+                        
+                        {% if log.session_rating %}
+                             <span class="text-yellow-600 font-bold text-sm bg-yellow-50 px-2 py-1 rounded border border-yellow-100">
+                                ★ {{ log.session_rating }}
+                             </span>
+                        {% endif %}
+
+                         {% if log.is_dnf %}
+                            <span class="text-red-600 font-bold text-sm bg-red-50 px-2 py-1 rounded border border-red-100">DNF</span>
+                        {% else %}
+                             <span class="font-bold text-slate-700">{{ log.hours_read }} hrs</span>
+                        {% endif %}
+                        
+                        <a href="/log/{{ log.id }}/edit" class="text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1 rounded text-xs font-bold uppercase transition">
+                            Edit
+                        </a>
+                    </div>
+                </div>
+                {% else %}
+                <div class="text-gray-500 text-center py-8 italic bg-gray-50 rounded border border-gray-100">
+                    No reading sessions logged yet.
+                </div>
+                {% endfor %}
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<form id="add-tag-form" action="/api/tag/add" method="post" class="hidden">
+    <input type="hidden" name="book_id" value="{{ book.book_id }}">
+    <input type="hidden" name="user_book_id" value="{{ book.id }}">
+    <input type="hidden" name="tag_name" id="add-tag-input">
+</form>
+
+{% for tag in tags %}
+<form id="remove-tag-{{ tag.id }}" action="/api/tag/remove" method="post" class="hidden">
+    <input type="hidden" name="book_id" value="{{ book.book_id }}">
+    <input type="hidden" name="user_book_id" value="{{ book.id }}">
+    <input type="hidden" name="tag_id" value="{{ tag.id }}">
+</form>
+{% endfor %}
+
+<div id="cover-modal" class="hidden fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onclick="document.getElementById('cover-modal').classList.add('hidden')"></div>
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+        <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full">
+            <div class="bg-gray-50 px-4 py-3 border-b border-gray-200 flex justify-between items-center">
+                <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">Select a New Cover</h3>
+                <button onclick="document.getElementById('cover-modal').classList.add('hidden')" class="text-gray-400 hover:text-gray-500 focus:outline-none">
+                    <span class="text-2xl">&times;</span>
+                </button>
+            </div>
+            
+            <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4 min-h-[300px] relative">
+                
+                <div id="modal-loading" class="htmx-indicator absolute inset-0 flex flex-col items-center justify-center bg-white z-10 pointer-events-none">
+                    <svg class="animate-spin h-10 w-10 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <p class="text-gray-500 font-medium mt-2">Searching Google & Open Library...</p>
+                </div>
+                
+                <div id="modal-content"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="relation-modal" class="hidden fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onclick="document.getElementById('relation-modal').classList.add('hidden')"></div>
+        <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+            <form action="/api/relation/add" method="post">
+                <input type="hidden" name="source_book_id" value="{{ book.book_id }}">
+                <input type="hidden" name="user_book_id" value="{{ book.id }}">
+                
+                <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                    <h3 class="text-lg font-bold text-gray-900">Link a Book</h3>
+                </div>
+                
+                <div class="p-6 space-y-4">
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">Target Book</label>
+                        <input type="text" list="books-datalist" name="target_book_title" required class="w-full border border-gray-300 rounded px-3 py-2 text-sm" placeholder="Start typing book title...">
+                        <datalist id="books-datalist">
+                            {% for b in all_books_list %}
+                            <option value="{{ b.title }}">
+                            {% endfor %}
+                        </datalist>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">Relationship Type</label>
+                        <select name="relation_type" class="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white">
+                            <optgroup label="Symmetric (Bidirectional)">
+                                <option value="reads_like">Reads Like</option>
+                                <option value="contrast">Contrast / Opposite</option>
+                                <option value="complementary">Complementary</option>
+                                <option value="same_universe">Same Universe</option>
+                                <option value="shared_trope">Shared Trope</option>
+                            </optgroup>
+                            <optgroup label="Asymmetric (Directional)">
+                                <option value="prequel_to">Prequel To...</option>
+                                <option value="sequel_to">Sequel To...</option>
+                                <option value="prerequisite_for">Prerequisite For...</option>
+                                <option value="more_detailed_than">More Detailed Than...</option>
+                                <option value="simpler_than">Simpler Than...</option>
+                                <option value="inspired_by">Inspired By...</option>
+                                <option value="better_than">Better Than...</option>
+                                <option value="worse_than">Worse Than...</option>
+                            </optgroup>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                    <button type="submit" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none sm:ml-3 sm:w-auto sm:text-sm">
+                        Create Link
+                    </button>
+                    <button type="button" onclick="document.getElementById('relation-modal').classList.add('hidden')" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
+                        Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

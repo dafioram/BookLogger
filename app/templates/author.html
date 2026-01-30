@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="mb-8 border-b pb-4 flex justify-between items-end">
+    <div>
+        <h2 class="text-sm font-bold text-gray-500 uppercase tracking-wide">Author Spotlight</h2>
+        <h1 class="text-3xl font-bold text-slate-800">{{ author_name }}</h1>
+    </div>
+    <div class="text-gray-500 font-bold">
+        {{ books|length }} Books Found
+    </div>
+</div>
+
+<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
+    {% for book in books %}
+    <a href="/book/{{ book.id }}" class="group block">
+        <div class="relative mb-2">
+            <img src="{{ book.cover_url }}" class="w-full rounded shadow-md group-hover:shadow-lg transition">
+            
+            <div class="absolute bottom-1 right-1 flex space-x-1">
+                {% if 'Physical' in book.formats %}
+                    <span class="bg-gray-900 text-white text-[10px] px-1 rounded opacity-80 shadow-sm">📖</span>
+                {% endif %}
+                {% if 'Audible' in book.formats %}
+                    <span class="bg-orange-500 text-white text-[10px] px-1 rounded opacity-80 shadow-sm">🎧</span>
+                {% endif %}
+                {% if 'Kindle' in book.formats %}
+                    <span class="bg-blue-800 text-white text-[10px] px-1 rounded opacity-80 shadow-sm">📱</span>
+                {% endif %}
+            </div>
+
+            <div class="absolute top-1 right-1 flex flex-col items-end space-y-1">
+                {% if book.shelf_status == 'On Deck' %}
+                    <span class="bg-blue-500 text-white text-xs px-1 rounded shadow border border-blue-600 font-bold">Next</span>
+                {% endif %}
+
+                {% if book.read_status == 'Read' %}
+                    <span class="bg-green-500 text-white text-xs px-1 rounded shadow border border-green-600 font-bold">✓</span>
+                {% elif book.read_status == 'DNF' %}
+                    <span class="bg-red-500 text-white text-xs px-1 rounded shadow border border-red-600 font-bold">DNF</span>
+                {% endif %}
+            </div>
+            
+            {% if not book.is_owned and ('Libby Audiobook' in book.formats or 'Libby eBook' in book.formats or 'Libby Physical' in book.formats) %}
+                 <span class="absolute top-1 left-1 bg-yellow-400 text-yellow-900 text-[10px] px-1 rounded shadow font-bold border border-yellow-500">LIBBY</span>
+            {% endif %}
+        </div>
+        <h3 class="font-bold text-sm leading-tight group-hover:text-blue-600">{{ book.title }}</h3>
+        <p class="text-xs text-gray-500">{{ book.author }}</p>
+    </a>
+    {% else %}
+    <div class="col-span-full text-center py-12 text-gray-500">
+        <p>No other books found for this author in your library.</p>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
