@@ -11,7 +11,7 @@ import os
 import uuid
 import urllib.parse
 from datetime import date
-from typing import List
+from typing import List, Optional
 
 # --- LOCAL IMPORTS ---
 from .database import init_db, get_db_connection, backup_database
@@ -107,13 +107,8 @@ async def reorder_on_deck(ordered_ids: List[int] = Body(...)):
     conn.close()
     return {"status": "success"}
 
-# ... (Rest of your routes: /stats, /library, /search, etc. remain unchanged) ...
-# Be sure to keep all the other routes from your previous main.py!
-# I am omitting them here for brevity, but they should be included below.
-
 @app.get("/stats", response_class=HTMLResponse)
 async def stats_page(request: Request, year: int = None):
-    # ... (Same as before) ...
     conn = get_db_connection()
     current_year = date.today().year
     selected_year = year if year else current_year
@@ -392,12 +387,29 @@ async def update_inventory(id: int, shelf_status: str = Form(...), inventory_not
     conn.close()
     return RedirectResponse(url=f"/book/{id}", status_code=303)
 
+# --- UPDATED: Optional hours ---
 @app.post("/book/{id}/add_log")
-async def add_log(id: int, date_finished: str = Form(...), hours: float = Form(...), format_consumed: str = Form(...), pace: str = Form("Medium"), notes: str = Form(""), is_dnf: bool = Form(False), is_borrowed: bool = Form(False), session_rating: float = Form(None)):
+async def add_log(
+    id: int, 
+    date_finished: str = Form(...), 
+    hours: Optional[float] = Form(None), 
+    format_consumed: str = Form(...), 
+    pace: str = Form("Medium"), 
+    notes: str = Form(""), 
+    is_dnf: bool = Form(False), 
+    is_borrowed: bool = Form(False), 
+    session_rating: float = Form(None)
+):
+    final_hours = hours if hours is not None else 0.0
     conn = get_db_connection()
-    conn.execute("INSERT INTO reading_logs (user_book_id, date_finished, hours_read, format_consumed, pace, log_notes, is_dnf, is_borrowed, session_rating) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (id, date_finished, hours, format_consumed, pace, notes, is_dnf, is_borrowed, session_rating))
+    conn.execute("""
+        INSERT INTO reading_logs (user_book_id, date_finished, hours_read, format_consumed, pace, log_notes, is_dnf, is_borrowed, session_rating) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (id, date_finished, final_hours, format_consumed, pace, notes, is_dnf, is_borrowed, session_rating))
+    
     if not is_dnf: conn.execute("UPDATE user_books SET read_status = 'Read' WHERE id = ?", (id,))
     else: conn.execute("UPDATE user_books SET read_status = 'DNF' WHERE id = ? AND read_status != 'Read'", (id,))
+    
     recalculate_book_rating(conn, id)
     conn.commit()
     conn.close()
@@ -456,10 +468,26 @@ async def edit_log_page(request: Request, log_id: int):
     if not log: raise HTTPException(status_code=404, detail="Log not found")
     return templates.TemplateResponse("edit_log.html", {"request": request, "log": log})
 
+# --- UPDATED: Optional hours ---
 @app.post("/log/{log_id}/edit")
-async def update_log(log_id: int, date_finished: str = Form(...), hours: float = Form(...), format_consumed: str = Form(...), pace: str = Form("Medium"), notes: str = Form(""), is_dnf: bool = Form(False), is_borrowed: bool = Form(False), session_rating: float = Form(None)):
+async def update_log(
+    log_id: int, 
+    date_finished: str = Form(...), 
+    hours: Optional[float] = Form(None), 
+    format_consumed: str = Form(...), 
+    pace: str = Form("Medium"), 
+    notes: str = Form(""), 
+    is_dnf: bool = Form(False), 
+    is_borrowed: bool = Form(False), 
+    session_rating: float = Form(None)
+):
+    final_hours = hours if hours is not None else 0.0
     conn = get_db_connection()
-    conn.execute("UPDATE reading_logs SET date_finished = ?, hours_read = ?, format_consumed = ?, pace = ?, log_notes = ?, is_dnf = ?, is_borrowed = ?, session_rating = ? WHERE id = ?", (date_finished, hours, format_consumed, pace, notes, is_dnf, is_borrowed, session_rating, log_id))
+    conn.execute("""
+        UPDATE reading_logs SET date_finished = ?, hours_read = ?, format_consumed = ?, pace = ?, log_notes = ?, is_dnf = ?, is_borrowed = ?, session_rating = ? 
+        WHERE id = ?
+    """, (date_finished, final_hours, format_consumed, pace, notes, is_dnf, is_borrowed, session_rating, log_id))
+    
     row = conn.execute("SELECT user_book_id FROM reading_logs WHERE id = ?", (log_id,)).fetchone()
     if row: recalculate_book_rating(conn, row['user_book_id'])
     conn.commit()
