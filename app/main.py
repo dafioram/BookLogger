@@ -162,7 +162,7 @@ async def stats_page(request: Request, year: int = None):
     # 4. Chronological Log List
     logs_rows = conn.execute("""
         SELECT 
-            b.id as book_id,
+            ub.id as book_id,
             b.title, 
             b.author, 
             b.cover_url, 
