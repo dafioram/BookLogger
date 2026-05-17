@@ -113,44 +113,97 @@ async def stats_page(request: Request, year: int = None):
     current_year = date.today().year
     selected_year = year if year else current_year
     
-    years_rows = conn.execute("SELECT DISTINCT strftime('%Y', date_finished) as y FROM reading_logs WHERE date_finished IS NOT NULL ORDER BY y DESC").fetchall()
+    # 1. Get available years
+    years_rows = conn.execute("""
+        SELECT DISTINCT strftime('%Y', date_finished) as y 
+        FROM reading_logs WHERE date_finished IS NOT NULL ORDER BY y DESC
+    """).fetchall()
     available_years = [int(r['y']) for r in years_rows if r['y']]
     if current_year not in available_years: available_years.insert(0, current_year)
     
+    # 2. Monthly Data (Bar Chart)
     monthly_query = """
-        SELECT strftime('%m', l.date_finished) as month, COUNT(DISTINCT l.id) as books, SUM(l.hours_read) as hours, SUM(b.total_pages) as pages
-        FROM reading_logs l JOIN user_books ub ON l.user_book_id = ub.id JOIN books b ON ub.book_id = b.id
+        SELECT 
+            strftime('%m', l.date_finished) as month,
+            COUNT(DISTINCT l.id) as books,
+            SUM(l.hours_read) as hours,
+            SUM(b.total_pages) as pages
+        FROM reading_logs l
+        JOIN user_books ub ON l.user_book_id = ub.id
+        JOIN books b ON ub.book_id = b.id
         WHERE strftime('%Y', l.date_finished) = ? AND l.is_dnf = 0
-        GROUP BY month ORDER BY month
+        GROUP BY month
+        ORDER BY month
     """
     rows = conn.execute(monthly_query, (str(selected_year),)).fetchall()
+    
     labels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
     data_books = [0] * 12
     data_hours = [0] * 12
     data_pages = [0] * 12
+    
     for r in rows:
         idx = int(r['month']) - 1
         data_books[idx] = r['books']
-        data_hours[idx] = round(r['hours'], 1)
+        data_hours[idx] = round(r['hours'], 1) # This was already correct
         data_pages[idx] = r['pages']
 
-    format_data = conn.execute("SELECT format_consumed, COUNT(*) as count FROM reading_logs WHERE strftime('%Y', date_finished) = ? GROUP BY format_consumed", (str(selected_year),)).fetchall()
+    # 3. Format Breakdown (Pie Chart)
+    format_data = conn.execute("""
+        SELECT format_consumed, COUNT(*) as count
+        FROM reading_logs
+        WHERE strftime('%Y', date_finished) = ?
+        GROUP BY format_consumed
+    """, (str(selected_year),)).fetchall()
+    
     format_labels = [row['format_consumed'] for row in format_data]
     format_counts = [row['count'] for row in format_data]
 
+    # 4. Chronological Log List
     logs_rows = conn.execute("""
-        SELECT b.id as book_id, b.title, b.author, b.cover_url, b.cover_path, ub.effective_user_rating as user_rating, rl.date_finished, rl.format_consumed, rl.is_borrowed, rl.hours_read
-        FROM reading_logs rl JOIN user_books ub ON rl.user_book_id = ub.id JOIN books b ON ub.book_id = b.id
-        WHERE strftime('%Y', rl.date_finished) = ? ORDER BY rl.date_finished ASC
+        SELECT 
+            ub.id as book_id,
+            b.title, 
+            b.author, 
+            b.cover_url, 
+            b.cover_path,
+            ub.effective_user_rating as user_rating,
+            rl.date_finished, 
+            rl.format_consumed, 
+            rl.is_borrowed,
+            rl.hours_read
+        FROM reading_logs rl
+        JOIN user_books ub ON rl.user_book_id = ub.id
+        JOIN books b ON ub.book_id = b.id
+        WHERE strftime('%Y', rl.date_finished) = ?
+        ORDER BY rl.date_finished ASC
     """, (str(selected_year),)).fetchall()
+    
     logs = []
     for row in logs_rows:
         r = dict(row)
         if r.get('cover_path'): r['cover_url'] = r['cover_path']
+        
+        # --- NEW: Rounding the hours for the list view ---
+        if r.get('hours_read') is not None:
+            r['hours_read'] = round(r['hours_read'], 1)
+            
         logs.append(r)
 
     conn.close()
-    return templates.TemplateResponse("stats.html", {"request": request, "selected_year": selected_year, "available_years": available_years, "labels": labels, "data_books": data_books, "data_hours": data_hours, "data_pages": data_pages, "format_labels": format_labels, "format_counts": format_counts, "logs": logs})
+    
+    return templates.TemplateResponse("stats.html", {
+        "request": request,
+        "selected_year": selected_year,
+        "available_years": available_years,
+        "labels": labels,          
+        "data_books": data_books, 
+        "data_hours": data_hours, 
+        "data_pages": data_pages,
+        "format_labels": format_labels,
+        "format_counts": format_counts,
+        "logs": logs
+    })
 
 @app.get("/top_books", response_class=HTMLResponse)
 async def top_books_page(request: Request):
