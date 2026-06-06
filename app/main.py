@@ -360,7 +360,7 @@ async def book_detail(request: Request, id: int):
         return d
     relations = [prep_relation(r, False) for r in outgoing] + [prep_relation(r, True) for r in incoming]
     all_tags = conn.execute("SELECT name FROM tags ORDER BY name ASC").fetchall()
-    all_books_list = conn.execute("SELECT b.title FROM books b JOIN user_books ub ON b.id = ub.book_id WHERE ub.is_owned = 1 ORDER BY b.title ASC").fetchall()
+    all_books_list = conn.execute("SELECT b.title FROM books b JOIN user_books ub ON b.id = ub.book_id ORDER BY b.title ASC").fetchall()
     conn.close()
     return templates.TemplateResponse("book_detail.html", {"request": request, "book": book, "logs": logs, "tags": tags, "all_tags": all_tags, "relations": relations, "all_books_list": all_books_list, "formats_owned": book['formats'], "calculated_rating": calculated_rating})
 
