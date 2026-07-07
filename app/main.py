@@ -243,6 +243,7 @@ async def library(request: Request, q: str = "", sort: str = "title_asc", tag: s
     total_books = conn.execute(f"SELECT COUNT(*) {base_query} {where_clause}", params).fetchone()[0]
     total_pages = math.ceil(total_books / ITEMS_PER_PAGE)
     
+    # --- CLEAN & ELEGANT SORTING LOGIC ---
     order_clause = " ORDER BY b.title ASC"
     if sort == "date_desc": 
         order_clause = " ORDER BY ub.date_added DESC"
@@ -251,12 +252,30 @@ async def library(request: Request, q: str = "", sort: str = "title_asc", tag: s
     elif sort == "rating_desc": 
         order_clause = " ORDER BY ub.effective_user_rating DESC"
     elif sort == "recent_read_desc": 
-        # Grabs the max finished date from reading_logs. 
-        # Books with no logs return NULL, which SQLite places at the bottom of a DESC sort.
-        # We add a secondary sort by title so unread books are still alphabetized.
+        # SQLite naturally sinks NULLs to the bottom on a DESC sort. 
+        # This keeps unread books at the bottom automatically!
         order_clause = " ORDER BY (SELECT MAX(date_finished) FROM reading_logs rl WHERE rl.user_book_id = ub.id) DESC, b.title ASC"
     
-    data_sql = f"SELECT ub.id, b.title, b.author, b.cover_url, b.cover_path, ub.read_status, ub.shelf_status, ub.formats_owned, ub.is_owned, ub.effective_user_rating {base_query} {where_clause} {order_clause} LIMIT ? OFFSET ?"
+    # --- DYNAMIC READ_STATUS CALCULATION ---
+    # Instead of pulling ub.read_status, we look into reading_logs.
+    # If a non-null date_finished exists, we label it 'Read'. Otherwise, NULL (unread).
+    data_sql = f"""
+        SELECT 
+            ub.id, 
+            b.title, 
+            b.author, 
+            b.cover_url, 
+            b.cover_path, 
+            (SELECT CASE WHEN MAX(rl.date_finished) IS NOT NULL THEN 'Read' ELSE NULL END 
+             FROM reading_logs rl WHERE rl.user_book_id = ub.id) AS read_status, 
+            ub.shelf_status, 
+            ub.formats_owned, 
+            ub.is_owned, 
+            ub.effective_user_rating 
+        {base_query} {where_clause} {order_clause} 
+        LIMIT ? OFFSET ?
+    """
+    
     data_params = params + [ITEMS_PER_PAGE, offset]
     books_rows = conn.execute(data_sql, data_params).fetchall()
     conn.close()
