@@ -597,7 +597,3 @@ async def trigger_backup(request: Request):
     message = "Database successfully backed up." if is_success else result
     filename = os.path.basename(result.replace("Success: ", "")) if is_success else ""
     return templates.TemplateResponse("backup_result.html", {"request": request, "is_success": is_success, "message": message, "filename": filename})
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
