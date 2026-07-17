@@ -13,7 +13,6 @@ import urllib.parse
 from datetime import date
 from typing import List, Optional
 
-# --- LOCAL IMPORTS ---
 from .database import init_db, get_db_connection, backup_database
 from .metadata import search_aggregated
 from .utils import (
@@ -42,7 +41,6 @@ templates.env.filters["urlencode"] = urllib.parse.quote_plus
 async def custom_404_handler(request: Request, exc: StarletteHTTPException):
     return templates.TemplateResponse("404.html", {"request": request}, status_code=404)
 
-# --- DASHBOARD ROUTE (Updated Ordering) ---
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     conn = get_db_connection()
@@ -56,7 +54,7 @@ async def dashboard(request: Request):
     # 2. Total Library Count
     library_count = conn.execute("SELECT COUNT(*) FROM user_books").fetchone()[0]
     
-    # 3. On Deck (List) - UPDATED TO USE ORDER COLUMN
+    # 3. On Deck (List)
     # We order by on_deck_order first. Nulls (new items) will naturally float to the top or bottom depending on DB,
     # so we add a secondary sort by ID to keep it stable.
     on_deck_rows = conn.execute("""
@@ -90,7 +88,6 @@ async def dashboard(request: Request):
         "recent": recent
     })
 
-# --- NEW ENDPOINT: REORDER ON DECK ---
 @app.post("/api/reorder_on_deck")
 async def reorder_on_deck(ordered_ids: List[int] = Body(...)):
     """
@@ -184,7 +181,6 @@ async def stats_page(request: Request, year: int = None):
         r = dict(row)
         if r.get('cover_path'): r['cover_url'] = r['cover_path']
         
-        # --- NEW: Rounding the hours for the list view ---
         if r.get('hours_read') is not None:
             r['hours_read'] = round(r['hours_read'], 1)
             
@@ -318,52 +314,135 @@ async def add_manual_page(request: Request):
     return templates.TemplateResponse("add_manual.html", {"request": request})
 
 @app.post("/add_manual")
-async def add_manual_post(title: str = Form(...), author: str = Form(...), subtitle: str = Form(""), year: str = Form(""), pages: int = Form(0), audio_minutes: int = Form(0), isbn13: str = Form(None), asin: str = Form(None), goodreads_id: str = Form(None), olid: str = Form(None), publisher: str = Form(""), series_name: str = Form(""), series_index: float = Form(None), language: str = Form("en"), genres: str = Form(""), summary: str = Form(""), cover_url: str = Form(None), format_owned: str = Form("Physical"), status: str = Form("Shelved")):
+async def add_manual_post(
+    title: str = Form(...),
+    author: str = Form(...),
+    subtitle: str = Form(None),
+    series_name: str = Form(None),
+    series_index: str = Form(None),
+    publication_year: str = Form(None),
+    total_pages: str = Form(None),
+    total_audio_minutes: str = Form(None),
+    publisher: str = Form(None),
+    language: str = Form("en"),
+    genres: str = Form(None),
+    isbn13: str = Form(None),
+    asin: str = Form(None),
+    goodreads_id: str = Form(None),
+    olid: str = Form(None),
+    cover_url: str = Form(None),
+    summary: str = Form(None),
+    format_owned: str = Form("Physical"),
+    status: str = Form("Shelved")
+):
     conn = get_db_connection()
     cursor = conn.cursor()
-    final_cover = cover_url.strip() if cover_url and cover_url.strip() else None
+    
+    def safe_int(val):
+        try: return int(val) if val else 0
+        except ValueError: return 0
+        
+    def safe_float(val):
+        try: return float(val) if val else None
+        except ValueError: return None
+
+    def safe_str(val):
+        return val if val and val.strip() != "" else None
+
+    p_pages = safe_int(total_pages)
+    p_audio = safe_int(total_audio_minutes)
+    p_series_idx = safe_float(series_index)
+    
+    clean_subtitle = safe_str(subtitle)
+    clean_publisher = safe_str(publisher)
+    clean_year = safe_str(publication_year)
+    clean_summary = safe_str(summary)
+    clean_series = safe_str(series_name)
+    clean_gr = safe_str(goodreads_id)
+    clean_asin = safe_str(asin)
+    clean_olid = safe_str(olid)
+    clean_genres = safe_str(genres)
+    clean_isbn = safe_str(isbn13)
+    final_cover = safe_str(cover_url)
+
     existing_book = None
-    if isbn13:
-        cursor.execute("SELECT id, cover_url FROM books WHERE isbn13 = ?", (isbn13,))
+    
+    # 1. Check for existing book by ISBN
+    if clean_isbn:
+        cursor.execute("SELECT id, cover_url FROM books WHERE isbn13 = ?", (clean_isbn,))
         existing_book = cursor.fetchone()
+        
+    # 2. Check for existing book by Title & Author
     if not existing_book:
         cursor.execute("SELECT id, cover_url FROM books WHERE title = ? AND author = ?", (title, author))
         existing_book = cursor.fetchone()
+
+    # 3. Update or Insert Core Book
     if existing_book:
         book_id = existing_book['id']
         current_db_cover = existing_book['cover_url']
         should_update_cover = final_cover and ("placeholder" in str(current_db_cover) or not current_db_cover)
-        sql = "UPDATE books SET subtitle = ?, publisher = ?, publication_year = ?, total_pages = ?, total_audio_minutes = ?, summary = ?, series_name = ?, series_index = ?, goodreads_id = ?, asin = ?, olid = ?, genres = ?"
-        params = [subtitle, publisher, year, pages, audio_minutes, summary, series_name, series_index, goodreads_id, asin, olid, genres]
+        
+        sql = """
+            UPDATE books 
+            SET subtitle = ?, publisher = ?, publication_year = ?, total_pages = ?, 
+                total_audio_minutes = ?, summary = ?, series_name = ?, series_index = ?, 
+                goodreads_id = ?, asin = ?, olid = ?, genres = ?
+        """
+        params = [clean_subtitle, clean_publisher, clean_year, p_pages, p_audio, clean_summary, 
+                  clean_series, p_series_idx, clean_gr, clean_asin, clean_olid, clean_genres]
+        
         if should_update_cover:
             sql += ", cover_url = ?"
             params.append(final_cover)
+            
         sql += " WHERE id = ?"
         params.append(book_id)
         cursor.execute(sql, tuple(params))
+        
     else:
         unique_id = str(uuid.uuid4())
         custom_google_id = f"manual_{unique_id}"
         insert_cover = final_cover if final_cover else "/static/placeholder.png"
-        cursor.execute("INSERT INTO books (google_id, isbn13, asin, olid, goodreads_id, title, subtitle, author, series_name, series_index, publisher, publication_year, language, genres, total_pages, total_audio_minutes, summary, cover_url, content_score) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (custom_google_id, isbn13, asin, olid, goodreads_id, title, subtitle, author, series_name, series_index, publisher, year, language, genres, pages, audio_minutes, summary, insert_cover, 100))
+        
+        cursor.execute("""
+            INSERT INTO books (
+                google_id, isbn13, asin, olid, goodreads_id, title, subtitle, author, 
+                series_name, series_index, publisher, publication_year, language, genres, 
+                total_pages, total_audio_minutes, summary, cover_url, content_score
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            custom_google_id, clean_isbn, clean_asin, clean_olid, clean_gr, title, clean_subtitle, 
+            author, clean_series, p_series_idx, clean_publisher, clean_year, language, clean_genres, 
+            p_pages, p_audio, clean_summary, insert_cover, 100
+        ))
         book_id = cursor.lastrowid
+
+    # 4. Handle User Inventory (user_books)
     cursor.execute("SELECT id FROM user_books WHERE book_id = ?", (book_id,))
     existing_inventory = cursor.fetchone()
+    
     if existing_inventory:
         user_book_id = existing_inventory['id']
     else:
         formats = [format_owned]
         is_owned = True
-        if format_owned in ["Libby Audiobook", "Libby eBook", "Libby Physical"]: is_owned = False
-        cursor.execute("INSERT INTO user_books (book_id, shelf_status, formats_owned, is_owned) VALUES (?, ?, ?, ?)", (book_id, status, json.dumps(formats), is_owned))
+        if format_owned in ["Libby Audiobook", "Libby eBook", "Libby Physical"]: 
+            is_owned = False
+            
+        cursor.execute("""
+            INSERT INTO user_books (book_id, shelf_status, formats_owned, is_owned) 
+            VALUES (?, ?, ?, ?)
+        """, (book_id, status, json.dumps(formats), is_owned))
         user_book_id = cursor.lastrowid
+        
     conn.commit()
     conn.close()
+    
     return RedirectResponse(url=f"/book/{user_book_id}", status_code=303)
 
 @app.get("/book/{id}", response_class=HTMLResponse)
 async def book_detail(request: Request, id: int):
-    # ... (Keep existing implementation with recent changes) ...
     conn = get_db_connection()
     row = conn.execute("SELECT ub.*, b.* FROM user_books ub JOIN books b ON ub.book_id = b.id WHERE ub.id = ?", (id,)).fetchone()
     if not row: raise HTTPException(status_code=404, detail="Book not found")
@@ -453,6 +532,100 @@ async def delete_book(id: int):
     conn.close()
     return RedirectResponse(url="/library", status_code=303)
 
+@app.get("/book/{user_book_id}/edit", response_class=HTMLResponse)
+async def edit_book_page(request: Request, user_book_id: int):
+    conn = get_db_connection()
+    # We fetch the book details by joining user_books to ensure it exists in your library
+    book = conn.execute("""
+        SELECT b.*, ub.id as user_book_id 
+        FROM user_books ub
+        JOIN books b ON ub.book_id = b.id
+        WHERE ub.id = ?
+    """, (user_book_id,)).fetchone()
+    conn.close()
+    
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found")
+        
+    return templates.TemplateResponse("edit_book.html", {"request": request, "book": book})
+
+@app.post("/book/{user_book_id}/edit")
+async def update_book_details(
+    user_book_id: int,
+    title: str = Form(...),
+    author: str = Form(...),
+    subtitle: str = Form(None),
+    series_name: str = Form(None),
+    series_index: str = Form(None),
+    publication_year: str = Form(None),
+    total_pages: str = Form(None),
+    total_audio_minutes: str = Form(None),
+    publisher: str = Form(None),
+    language: str = Form(None),
+    genres: str = Form(None),
+    isbn13: str = Form(None),
+    asin: str = Form(None),
+    goodreads_id: str = Form(None),
+    olid: str = Form(None),
+    cover_url: str = Form(None),
+    summary: str = Form(None)
+):
+    conn = get_db_connection()
+    
+    # 1. Get the underlying global book_id
+    ub = conn.execute("SELECT book_id FROM user_books WHERE id = ?", (user_book_id,)).fetchone()
+    if not ub:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Book not found")
+        
+    # 2. Helpers to safely convert empty form strings to None (NULL in database)
+    def safe_int(val):
+        try: return int(val) if val else None
+        except ValueError: return None
+        
+    def safe_float(val):
+        try: return float(val) if val else None
+        except ValueError: return None
+
+    def safe_str(val):
+        return val if val and val.strip() != "" else None
+
+    # 3. Update the books table
+    conn.execute("""
+        UPDATE books 
+        SET title = ?, author = ?, subtitle = ?, series_name = ?, series_index = ?, 
+            publication_year = ?, total_pages = ?, total_audio_minutes = ?, 
+            publisher = ?, language = ?, genres = ?, 
+            isbn13 = ?, asin = ?, goodreads_id = ?, olid = ?, 
+            cover_url = ?, summary = ?
+        WHERE id = ?
+    """, (
+        title, 
+        author, 
+        safe_str(subtitle), 
+        safe_str(series_name), 
+        safe_float(series_index),           # Uses safe_float because it's REAL
+        safe_str(publication_year),         # Uses safe_str because it's TEXT
+        safe_int(total_pages),              # Uses safe_int because it's INTEGER
+        safe_int(total_audio_minutes),      # Uses safe_int because it's INTEGER
+        safe_str(publisher), 
+        safe_str(language), 
+        safe_str(genres), 
+        safe_str(isbn13), 
+        safe_str(asin), 
+        safe_str(goodreads_id), 
+        safe_str(olid), 
+        safe_str(cover_url), 
+        safe_str(summary), 
+        ub['book_id']
+    ))
+    
+    conn.commit()
+    conn.close()
+    
+    # Redirect back to the book detail page
+    return RedirectResponse(url=f"/book/{user_book_id}", status_code=303)
+
 @app.post("/book/{id}/update_inventory")
 async def update_inventory(id: int, shelf_status: str = Form(...), inventory_notes: str = Form(""), physical: str = Form(None), kindle: str = Form(None), audible: str = Form(None), libby_audio: str = Form(None), libby_physical: str = Form(None), libby_ebook: str = Form(None)):
     formats = []
@@ -469,7 +642,6 @@ async def update_inventory(id: int, shelf_status: str = Form(...), inventory_not
     conn.close()
     return RedirectResponse(url=f"/book/{id}", status_code=303)
 
-# --- UPDATED: Optional hours ---
 @app.post("/book/{id}/add_log")
 async def add_log(
     id: int, 
@@ -550,7 +722,6 @@ async def edit_log_page(request: Request, log_id: int):
     if not log: raise HTTPException(status_code=404, detail="Log not found")
     return templates.TemplateResponse("edit_log.html", {"request": request, "log": log})
 
-# --- UPDATED: Optional hours ---
 @app.post("/log/{log_id}/edit")
 async def update_log(
     log_id: int, 

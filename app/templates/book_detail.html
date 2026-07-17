@@ -41,7 +41,9 @@
             {% endif %}
 
             <h1 class="text-4xl md:text-5xl font-bold text-slate-900 mb-1 leading-tight">{{ book.title }}</h1>
-            
+
+
+
             {% if book.subtitle %}
             <h2 class="text-xl text-slate-500 font-medium mb-4 italic">{{ book.subtitle }}</h2>
             {% else %}
@@ -52,7 +54,14 @@
                 {{ book.author }}
             </a>
             
+
+			
             <div class="flex justify-center md:justify-start space-x-4 mb-6">
+                <div class="bg-white px-4 py-2 rounded shadow-sm border border-gray-200 text-sm text-gray-600 flex items-center">
+				<a href="/book/{{ book.id }}/edit" class="text-slate-500 hover:text-blue-700 transition flex items-center gap-1 text-xs font-bold bg-white shadow-sm px-3 py-1.5 rounded-full border border-slate-200 hover:border-blue-300">
+                    ✏️ Edit Metadata
+                </a>
+                </div>
                 <div class="bg-white px-4 py-2 rounded shadow-sm border border-gray-200 text-sm text-gray-600 flex items-center">
                     <span class="mr-2 text-lg">🌍</span> 
                     Google: <strong class="ml-1 text-slate-800">{{ book.average_rating or 'N/A' }}</strong>/5
