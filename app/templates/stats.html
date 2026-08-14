@@ -21,7 +21,7 @@
             <div class="text-blue-100 uppercase text-xs font-bold tracking-wider">Books Finished</div>
         </div>
         <div class="bg-purple-600 text-white p-6 rounded-lg shadow-lg flex flex-col justify-center">
-            <div class="text-4xl font-bold">{{ data_hours|sum }}</div>
+            <div class="text-4xl font-bold">{{ data_hours|sum|round(1) }}</div>
             <div class="text-purple-100 uppercase text-xs font-bold tracking-wider">Hours Read</div>
         </div>
         <div class="bg-emerald-600 text-white p-6 rounded-lg shadow-lg flex flex-col justify-center">
