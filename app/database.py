@@ -2,6 +2,8 @@ import sqlite3
 import os
 from datetime import datetime
 
+from .utils import recalculate_all_read_statuses
+
 # Relative path for Windows/Docker compatibility
 DB_FOLDER = os.path.join(os.getcwd(), "data") 
 DB_PATH = os.path.join(DB_FOLDER, "library.db")
@@ -122,6 +124,9 @@ def init_db():
     )
     ''')
     
+    # Keep book-level read_status in sync with per-session DNF flags
+    recalculate_all_read_statuses(conn)
+
     conn.commit()
     conn.close()
 

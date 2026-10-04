@@ -21,6 +21,7 @@ from .utils import (
     format_runtime, 
     process_book_row, 
     recalculate_book_rating, 
+    recalculate_read_status,
     RELATION_MAP
 )
 
@@ -49,8 +50,11 @@ async def dashboard(request: Request):
     
     # 1. Lifetime Stats
     stats = conn.execute("""
-        SELECT COUNT(DISTINCT l.id) as books_read, SUM(l.hours_read) as total_hours
-        FROM reading_logs l WHERE l.is_dnf = 0
+        SELECT
+            COUNT(CASE WHEN COALESCE(l.is_dnf, 0) = 0 THEN 1 END) as books_read,
+            COUNT(CASE WHEN l.is_dnf = 1 THEN 1 END) as books_dnf,
+            SUM(l.hours_read) as total_hours
+        FROM reading_logs l
     """).fetchone()
     
     # 2. Total Library Count
@@ -72,11 +76,11 @@ async def dashboard(request: Request):
     
     # 4. Recent Logs
     recent = conn.execute("""
-        SELECT b.title, l.date_finished, l.hours_read, l.is_dnf
+        SELECT ub.id as book_id, b.title, l.date_finished, l.hours_read, l.is_dnf
         FROM reading_logs l
         JOIN user_books ub ON l.user_book_id = ub.id
         JOIN books b ON ub.book_id = b.id
-        ORDER BY l.date_finished DESC
+        ORDER BY l.date_finished DESC, l.id DESC
         LIMIT 10
     """).fetchall()
     
@@ -125,13 +129,14 @@ async def stats_page(request: Request, year: int = None):
     monthly_query = """
         SELECT 
             strftime('%m', l.date_finished) as month,
-            COUNT(DISTINCT l.id) as books,
+            COUNT(CASE WHEN COALESCE(l.is_dnf, 0) = 0 THEN 1 END) as books,
+            COUNT(CASE WHEN l.is_dnf = 1 THEN 1 END) as dnf,
             SUM(l.hours_read) as hours,
-            SUM(b.total_pages) as pages
+            SUM(CASE WHEN COALESCE(l.is_dnf, 0) = 0 THEN b.total_pages ELSE 0 END) as pages
         FROM reading_logs l
         JOIN user_books ub ON l.user_book_id = ub.id
         JOIN books b ON ub.book_id = b.id
-        WHERE strftime('%Y', l.date_finished) = ? AND l.is_dnf = 0
+        WHERE strftime('%Y', l.date_finished) = ?
         GROUP BY month
         ORDER BY month
     """
@@ -139,14 +144,16 @@ async def stats_page(request: Request, year: int = None):
     
     labels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
     data_books = [0] * 12
+    data_dnf = [0] * 12
     data_hours = [0] * 12
     data_pages = [0] * 12
     
     for r in rows:
         idx = int(r['month']) - 1
         data_books[idx] = r['books']
-        data_hours[idx] = round(r['hours'], 1) # This was already correct
-        data_pages[idx] = r['pages']
+        data_dnf[idx] = r['dnf']
+        data_hours[idx] = round(r['hours'] or 0, 1)
+        data_pages[idx] = r['pages'] or 0
 
     # 3. Format Breakdown (Pie Chart)
     format_data = conn.execute("""
@@ -171,12 +178,13 @@ async def stats_page(request: Request, year: int = None):
             rl.date_finished, 
             rl.format_consumed, 
             rl.is_borrowed,
+            rl.is_dnf,
             rl.hours_read
         FROM reading_logs rl
         JOIN user_books ub ON rl.user_book_id = ub.id
         JOIN books b ON ub.book_id = b.id
         WHERE strftime('%Y', rl.date_finished) = ?
-        ORDER BY rl.date_finished ASC
+        ORDER BY rl.date_finished ASC, rl.id ASC
     """, (str(selected_year),)).fetchall()
     
     logs = []
@@ -198,6 +206,7 @@ async def stats_page(request: Request, year: int = None):
         "available_years": available_years,
         "labels": labels,          
         "data_books": data_books, 
+        "data_dnf": data_dnf,
         "data_hours": data_hours, 
         "data_pages": data_pages,
         "format_labels": format_labels,
@@ -460,9 +469,7 @@ async def add_log(
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (id, date_finished, final_hours, format_consumed, pace, notes, is_dnf, is_borrowed, session_rating))
     
-    if not is_dnf: conn.execute("UPDATE user_books SET read_status = 'Read' WHERE id = ?", (id,))
-    else: conn.execute("UPDATE user_books SET read_status = 'DNF' WHERE id = ? AND read_status != 'Read'", (id,))
-    
+    recalculate_read_status(conn, id)
     recalculate_book_rating(conn, id)
     conn.commit()
     conn.close()
@@ -542,7 +549,11 @@ async def update_log(
     """, (date_finished, final_hours, format_consumed, pace, notes, is_dnf, is_borrowed, session_rating, log_id))
     
     row = conn.execute("SELECT user_book_id FROM reading_logs WHERE id = ?", (log_id,)).fetchone()
-    if row: recalculate_book_rating(conn, row['user_book_id'])
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Log not found")
+    recalculate_read_status(conn, row['user_book_id'])
+    recalculate_book_rating(conn, row['user_book_id'])
     conn.commit()
     conn.close()
     return RedirectResponse(url=f"/book/{row['user_book_id']}", status_code=303)
@@ -554,6 +565,7 @@ async def delete_log(log_id: int):
     if row:
         book_id = row['user_book_id']
         conn.execute("DELETE FROM reading_logs WHERE id = ?", (log_id,))
+        recalculate_read_status(conn, book_id)
         recalculate_book_rating(conn, book_id)
         conn.commit()
         conn.close()
