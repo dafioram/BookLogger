@@ -37,3 +37,25 @@ def test_fresh_schema_already_has_migrated_columns(data_dir):
     for table, column, _ in database.COLUMN_MIGRATIONS:
         assert column in columns(conn, table)
     conn.close()
+
+
+def test_init_db_removes_orphaned_links(data_dir):
+    database.init_db()
+    conn = sqlite3.connect(database.DB_PATH)  # foreign keys off, like the old app
+    conn.executescript("""
+        INSERT INTO books (id, google_id, title) VALUES (1, 'a', 'Alive');
+        INSERT INTO tags (id, name) VALUES (1, 'scifi');
+        INSERT INTO book_tags VALUES (1, 1), (2, 1);
+        INSERT INTO book_relations (source_book_id, target_book_id, relation_type)
+            VALUES (1, 2, 'reads_like'), (2, 1, 'reads_like');
+    """)
+    conn.commit()
+    conn.close()
+
+    database.init_db()
+
+    conn = database.get_db_connection()
+    assert [tuple(r) for r in conn.execute("SELECT book_id, tag_id FROM book_tags")] == [(1, 1)]
+    assert conn.execute("SELECT COUNT(*) FROM book_relations").fetchone()[0] == 0
+    assert conn.execute("SELECT name FROM tags").fetchone()[0] == "scifi"  # tags themselves are kept
+    conn.close()
