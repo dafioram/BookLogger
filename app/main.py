@@ -1,10 +1,9 @@
 from fastapi import FastAPI, Request, Form, HTTPException, Body
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from starlette.exceptions import HTTPException as StarletteHTTPException
-import httpx
 import json
 import math
 import os
@@ -482,18 +481,6 @@ async def author_page(request: Request, name: str):
     conn.close()
     books_data = [process_book_row(r) for r in books_rows]
     return templates.TemplateResponse(request, "author.html", {"request": request, "books": books_data, "author_name": name})
-
-@app.get("/api/cover_proxy")
-async def cover_proxy(url: str):
-    if not url: return Response(status_code=404)
-    if url.startswith("/static"): return RedirectResponse(url)
-    try:
-        headers = {"User-Agent": "Mozilla/5.0", "Accept": "image/*", "Referer": "https://www.google.com/"}
-        async with httpx.AsyncClient(follow_redirects=True, verify=False) as client:
-            resp = await client.get(url, headers=headers, timeout=10.0)
-            if resp.status_code != 200: return RedirectResponse("/static/placeholder.png")
-            return Response(content=resp.content, media_type=resp.headers.get("content-type", "image/jpeg"))
-    except: return RedirectResponse("/static/placeholder.png")
 
 @app.get("/book/{id}/cover_options", response_class=HTMLResponse)
 async def get_cover_options(request: Request, id: int):

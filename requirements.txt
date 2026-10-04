@@ -2,7 +2,5 @@ fastapi
 uvicorn
 jinja2
 python-multipart
-requests
 httpx
-sqlalchemy
 python-dateutil
