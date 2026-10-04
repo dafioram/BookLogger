@@ -56,3 +56,24 @@ def test_cover_routes_use_library_entry_id(client, db, mismatched_ids, monkeypat
     covers = dict(db.execute("SELECT id, cover_url FROM books").fetchall())
     assert covers[book_id] == "https://img/new.jpg"
     assert covers[book_id - 1] != "https://img/new.jpg"
+
+
+def test_deleting_book_removes_its_tags_and_relations(client, db):
+    gone = add_book(db, "Gone")
+    kept = add_book(db, "Kept")
+    gone_book_id = db.execute("SELECT book_id FROM user_books WHERE id = ?", (gone,)).fetchone()[0]
+    client.post("/api/tag/add", data={"book_id": gone_book_id, "user_book_id": gone, "tag_name": "scifi"})
+    client.post("/api/relation/add", data={"source_book_id": gone_book_id, "user_book_id": gone,
+                                           "target_book_title": "Kept", "relation_type": "reads_like"})
+    assert db.execute("SELECT COUNT(*) FROM book_tags").fetchone()[0] == 1
+    assert db.execute("SELECT COUNT(*) FROM book_relations").fetchone()[0] == 1
+
+    client.post(f"/book/{gone}/delete", follow_redirects=False)
+
+    assert db.execute("SELECT COUNT(*) FROM book_tags").fetchone()[0] == 0
+    assert db.execute("SELECT COUNT(*) FROM book_relations").fetchone()[0] == 0
+    assert client.get(f"/book/{kept}").status_code == 200
+
+
+def test_cover_proxy_removed(client):
+    assert client.get("/api/cover_proxy?url=https://example.com/a.jpg").status_code == 404

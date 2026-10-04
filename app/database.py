@@ -32,6 +32,8 @@ def add_column_if_missing(cursor, table, column, definition):
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    # Off by default in SQLite; needed for ON DELETE CASCADE on tags/relations
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 def init_db():
@@ -139,6 +141,15 @@ def init_db():
     # Upgrade databases created before these columns existed
     for table, column, definition in COLUMN_MIGRATIONS:
         add_column_if_missing(cursor, table, column, definition)
+
+    # Remove tag/relation links left behind by books deleted before
+    # foreign keys were enforced
+    cursor.execute("DELETE FROM book_tags WHERE book_id NOT IN (SELECT id FROM books)")
+    cursor.execute("""
+        DELETE FROM book_relations
+        WHERE source_book_id NOT IN (SELECT id FROM books)
+           OR target_book_id NOT IN (SELECT id FROM books)
+    """)
 
     # Keep book-level read_status in sync with per-session DNF flags
     recalculate_all_read_statuses(conn)
