@@ -41,7 +41,7 @@ templates.env.filters["urlencode"] = urllib.parse.quote_plus
 
 @app.exception_handler(404)
 async def custom_404_handler(request: Request, exc: StarletteHTTPException):
-    return templates.TemplateResponse("404.html", {"request": request}, status_code=404)
+    return templates.TemplateResponse(request, "404.html", {"request": request}, status_code=404)
 
 # --- DASHBOARD ROUTE (Updated Ordering) ---
 @app.get("/", response_class=HTMLResponse)
@@ -85,7 +85,7 @@ async def dashboard(request: Request):
     """).fetchall()
     
     conn.close()
-    return templates.TemplateResponse("index.html", {
+    return templates.TemplateResponse(request, "index.html", {
         "request": request, 
         "stats": stats, 
         "total_books": library_count, 
@@ -200,7 +200,7 @@ async def stats_page(request: Request, year: int = None):
 
     conn.close()
     
-    return templates.TemplateResponse("stats.html", {
+    return templates.TemplateResponse(request, "stats.html", {
         "request": request,
         "selected_year": selected_year,
         "available_years": available_years,
@@ -225,7 +225,7 @@ async def top_books_page(request: Request):
         if book.get('cover_path'): book['cover_url'] = book['cover_path']
         if book['effective_user_rating']: book['effective_user_rating'] = round(book['effective_user_rating'], 1)
         books.append(book)
-    return templates.TemplateResponse("top_books.html", {"request": request, "books": books})
+    return templates.TemplateResponse(request, "top_books.html", {"request": request, "books": books})
 
 @app.get("/library", response_class=HTMLResponse)
 async def library(request: Request, q: str = "", sort: str = "title_asc", tag: str = None, filter_format: str = "all", page: int = 1):
@@ -260,17 +260,17 @@ async def library(request: Request, q: str = "", sort: str = "title_asc", tag: s
     books_rows = conn.execute(data_sql, data_params).fetchall()
     conn.close()
     books_data = [process_book_row(r) for r in books_rows]
-    return templates.TemplateResponse("library.html", {"request": request, "books": books_data, "query": q, "sort": sort, "all_tags": all_tags, "selected_tag": selected_tag_id, "current_filter": filter_format, "current_page": page, "total_pages": total_pages, "total_books": total_books})
+    return templates.TemplateResponse(request, "library.html", {"request": request, "books": books_data, "query": q, "sort": sort, "all_tags": all_tags, "selected_tag": selected_tag_id, "current_filter": filter_format, "current_page": page, "total_pages": total_pages, "total_books": total_books})
 
 @app.get("/search", response_class=HTMLResponse)
 async def search_page(request: Request):
-    return templates.TemplateResponse("search.html", {"request": request})
+    return templates.TemplateResponse(request, "search.html", {"request": request})
 
 @app.post("/api/search")
 async def search_api(request: Request, query: str = Form(...)):
     if not query: return ""
     results = await search_aggregated(query)
-    return templates.TemplateResponse("partials/search_row.html", {"request": request, "results": results})
+    return templates.TemplateResponse(request, "partials/search_row.html", {"request": request, "results": results})
 
 @app.post("/api/add_book")
 async def add_book(google_id: str = Form(...), title: str = Form(...), author: str = Form(...), cover: str = Form(...), pages: int = Form(0), summary: str = Form(""), genres: str = Form(""), rating: float = Form(0.0), year: str = Form(""), isbn13: str = Form(None), olid: str = Form(None), content_score: int = Form(0)):
@@ -295,7 +295,7 @@ async def add_book(google_id: str = Form(...), title: str = Form(...), author: s
 
 @app.get("/add_manual", response_class=HTMLResponse)
 async def add_manual_page(request: Request):
-    return templates.TemplateResponse("add_manual.html", {"request": request})
+    return templates.TemplateResponse(request, "add_manual.html", {"request": request})
 
 @app.post("/add_manual")
 async def add_manual_post(title: str = Form(...), author: str = Form(...), subtitle: str = Form(""), year: str = Form(""), pages: int = Form(0), audio_minutes: int = Form(0), isbn13: str = Form(None), asin: str = Form(None), goodreads_id: str = Form(None), olid: str = Form(None), publisher: str = Form(""), series_name: str = Form(""), series_index: float = Form(None), language: str = Form("en"), genres: str = Form(""), summary: str = Form(""), cover_url: str = Form(None), format_owned: str = Form("Physical"), status: str = Form("Shelved")):
@@ -371,7 +371,7 @@ async def book_detail(request: Request, id: int):
     all_tags = conn.execute("SELECT name FROM tags ORDER BY name ASC").fetchall()
     all_books_list = conn.execute("SELECT b.title FROM books b JOIN user_books ub ON b.id = ub.book_id ORDER BY b.title ASC").fetchall()
     conn.close()
-    return templates.TemplateResponse("book_detail.html", {"request": request, "book": book, "logs": logs, "tags": tags, "all_tags": all_tags, "relations": relations, "all_books_list": all_books_list, "formats_owned": book['formats'], "calculated_rating": calculated_rating})
+    return templates.TemplateResponse(request, "book_detail.html", {"request": request, "book": book, "logs": logs, "tags": tags, "all_tags": all_tags, "relations": relations, "all_books_list": all_books_list, "formats_owned": book['formats'], "calculated_rating": calculated_rating})
 
 @app.post("/api/tag/add")
 async def add_tag_to_book(book_id: int = Form(...), user_book_id: int = Form(...), tag_name: str = Form(...)):
@@ -481,7 +481,7 @@ async def author_page(request: Request, name: str):
     books_rows = conn.execute("SELECT ub.id, b.title, b.author, b.cover_url, b.cover_path, ub.read_status, ub.shelf_status, ub.formats_owned, ub.is_owned FROM user_books ub JOIN books b ON ub.book_id = b.id WHERE b.author LIKE ? ORDER BY b.publication_year DESC", (f"%{name}%",)).fetchall()
     conn.close()
     books_data = [process_book_row(r) for r in books_rows]
-    return templates.TemplateResponse("author.html", {"request": request, "books": books_data, "author_name": name})
+    return templates.TemplateResponse(request, "author.html", {"request": request, "books": books_data, "author_name": name})
 
 @app.get("/api/cover_proxy")
 async def cover_proxy(url: str):
@@ -509,7 +509,7 @@ async def get_cover_options(request: Request, id: int):
         if url and "placeholder" not in url and url not in seen:
             unique_covers.append(url)
             seen.add(url)
-    return templates.TemplateResponse("partials/cover_options.html", {"request": request, "book_id": id, "covers": unique_covers})
+    return templates.TemplateResponse(request, "partials/cover_options.html", {"request": request, "book_id": id, "covers": unique_covers})
 
 @app.post("/book/{id}/set_cover")
 async def set_cover(id: int, new_cover_url: str = Form(...)):
@@ -526,7 +526,7 @@ async def edit_log_page(request: Request, log_id: int):
     log = conn.execute("SELECT * FROM reading_logs WHERE id = ?", (log_id,)).fetchone()
     conn.close()
     if not log: raise HTTPException(status_code=404, detail="Log not found")
-    return templates.TemplateResponse("edit_log.html", {"request": request, "log": log})
+    return templates.TemplateResponse(request, "edit_log.html", {"request": request, "log": log})
 
 # --- UPDATED: Optional hours ---
 @app.post("/log/{log_id}/edit")
@@ -579,7 +579,7 @@ async def trigger_backup(request: Request):
     is_success = result.startswith("Success:")
     message = "Database successfully backed up." if is_success else result
     filename = os.path.basename(result.replace("Success: ", "")) if is_success else ""
-    return templates.TemplateResponse("backup_result.html", {"request": request, "is_success": is_success, "message": message, "filename": filename})
+    return templates.TemplateResponse(request, "backup_result.html", {"request": request, "is_success": is_success, "message": message, "filename": filename})
 
 if __name__ == "__main__":
     import uvicorn
