@@ -217,7 +217,7 @@ async def stats_page(request: Request, year: int = None):
 @app.get("/top_books", response_class=HTMLResponse)
 async def top_books_page(request: Request):
     conn = get_db_connection()
-    rows = conn.execute("SELECT b.id, b.title, b.author, b.cover_url, b.cover_path, ub.effective_user_rating FROM user_books ub JOIN books b ON ub.book_id = b.id WHERE ub.effective_user_rating IS NOT NULL ORDER BY ub.effective_user_rating DESC LIMIT 20").fetchall()
+    rows = conn.execute("SELECT ub.id, b.title, b.author, b.cover_url, b.cover_path, ub.effective_user_rating FROM user_books ub JOIN books b ON ub.book_id = b.id WHERE ub.effective_user_rating IS NOT NULL ORDER BY ub.effective_user_rating DESC LIMIT 20").fetchall()
     conn.close()
     books = []
     for r in rows:
@@ -498,7 +498,7 @@ async def cover_proxy(url: str):
 @app.get("/book/{id}/cover_options", response_class=HTMLResponse)
 async def get_cover_options(request: Request, id: int):
     conn = get_db_connection()
-    book = conn.execute("SELECT title, author FROM books WHERE id = ?", (id,)).fetchone()
+    book = conn.execute("SELECT b.title, b.author FROM user_books ub JOIN books b ON ub.book_id = b.id WHERE ub.id = ?", (id,)).fetchone()
     conn.close()
     if not book: return "Book not found"
     results = await search_aggregated(f"{book['title']} {book['author']}")
@@ -509,16 +509,15 @@ async def get_cover_options(request: Request, id: int):
         if url and "placeholder" not in url and url not in seen:
             unique_covers.append(url)
             seen.add(url)
-    return templates.TemplateResponse(request, "partials/cover_options.html", {"request": request, "book_id": id, "covers": unique_covers})
+    return templates.TemplateResponse(request, "partials/cover_options.html", {"request": request, "user_book_id": id, "covers": unique_covers})
 
 @app.post("/book/{id}/set_cover")
 async def set_cover(id: int, new_cover_url: str = Form(...)):
     conn = get_db_connection()
-    conn.execute("UPDATE books SET cover_url = ?, cover_path = NULL WHERE id = ?", (new_cover_url, id))
+    conn.execute("UPDATE books SET cover_url = ?, cover_path = NULL WHERE id = (SELECT book_id FROM user_books WHERE id = ?)", (new_cover_url, id))
     conn.commit()
-    row = conn.execute("SELECT id FROM user_books WHERE book_id = ?", (id,)).fetchone()
     conn.close()
-    return RedirectResponse(url=f"/book/{row['id']}", status_code=303) if row else RedirectResponse(url="/library", status_code=303)
+    return RedirectResponse(url=f"/book/{id}", status_code=303)
 
 @app.get("/log/{log_id}/edit", response_class=HTMLResponse)
 async def edit_log_page(request: Request, log_id: int):
