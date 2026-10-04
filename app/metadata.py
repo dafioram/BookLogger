@@ -144,7 +144,7 @@ async def search_google(client, query, match_isbn=None):
     else:
         strategies = [query, f"intitle:{query}"]
 
-    tasks = [client.get(f"https://www.googleapis.com/books/v1/volumes?q={s}&maxResults=20") for s in strategies]
+    tasks = [client.get("https://www.googleapis.com/books/v1/volumes", params={"q": s, "maxResults": 20}) for s in strategies]
     responses = await asyncio.gather(*tasks, return_exceptions=True)
     
     seen_ids = set()
@@ -202,7 +202,7 @@ async def search_google(client, query, match_isbn=None):
 async def search_open_library(client, query, match_isbn=None):
     results = []
     try:
-        resp = await client.get(f"https://openlibrary.org/search.json?q={query}&limit=20")
+        resp = await client.get("https://openlibrary.org/search.json", params={"q": query, "limit": 20})
         if resp.status_code != 200: return []
         data = resp.json()
         
