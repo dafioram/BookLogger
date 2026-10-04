@@ -2,10 +2,32 @@ import sqlite3
 import os
 from datetime import datetime
 
+from .utils import recalculate_all_read_statuses
+
 # Relative path for Windows/Docker compatibility
 DB_FOLDER = os.path.join(os.getcwd(), "data") 
 DB_PATH = os.path.join(DB_FOLDER, "library.db")
 BACKUP_DIR = os.path.join(DB_FOLDER, "backups")
+
+# Columns added after the original schema. CREATE TABLE above already includes
+# them for new databases; older databases get them added on startup.
+COLUMN_MIGRATIONS = [
+    ("books", "subtitle", "TEXT"),
+    ("books", "publisher", "TEXT"),
+    ("books", "series_name", "TEXT"),
+    ("books", "series_index", "REAL"),
+    ("books", "language", "TEXT DEFAULT 'en'"),
+    ("books", "goodreads_id", "TEXT"),
+    ("books", "content_score", "INTEGER DEFAULT 0"),
+    ("books", "total_audio_minutes", "INTEGER DEFAULT 0"),
+    ("user_books", "on_deck_order", "INTEGER"),
+]
+
+def add_column_if_missing(cursor, table, column, definition):
+    existing = {row[1] for row in cursor.execute(f"PRAGMA table_info({table})")}
+    if column not in existing:
+        cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+        print(f"✅ Added '{table}.{column}' column to database.")
 
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
@@ -65,14 +87,6 @@ def init_db():
     )
     ''')
 
-    # --- MIGRATION: Ensure on_deck_order exists for old databases ---
-    try:
-        cursor.execute("ALTER TABLE user_books ADD COLUMN on_deck_order INTEGER")
-        print("✅ Added 'on_deck_order' column to database.")
-    except sqlite3.OperationalError:
-        # Column likely already exists, ignore
-        pass
-    
     # 3. Reading Logs
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS reading_logs (
@@ -122,6 +136,13 @@ def init_db():
     )
     ''')
     
+    # Upgrade databases created before these columns existed
+    for table, column, definition in COLUMN_MIGRATIONS:
+        add_column_if_missing(cursor, table, column, definition)
+
+    # Keep book-level read_status in sync with per-session DNF flags
+    recalculate_all_read_statuses(conn)
+
     conn.commit()
     conn.close()
 

@@ -2,7 +2,7 @@
     <label class="block text-xs font-bold text-blue-800 uppercase mb-2">
         Or paste a direct image link:
     </label>
-    <form action="/book/{{ book_id }}/set_cover" method="post" class="flex gap-2 w-full">
+    <form action="/book/{{ user_book_id }}/set_cover" method="post" class="flex gap-2 w-full">
         <input 
             type="url" 
             name="new_cover_url" 
@@ -23,7 +23,7 @@
 
     <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-6 animate-fade-in">
         {% for url in covers %}
-        <form action="/book/{{ book_id }}/set_cover" method="post" class="cursor-pointer group relative">
+        <form action="/book/{{ user_book_id }}/set_cover" method="post" class="cursor-pointer group relative">
             <input type="hidden" name="new_cover_url" value="{{ url }}">
             
             <button type="submit" class="w-full block transition transform hover:scale-105 duration-200">

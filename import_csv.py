@@ -11,6 +11,7 @@ from datetime import datetime
 # --- IMPORT YOUR SMART SEARCH ---
 try:
     from app.metadata import search_aggregated
+    from app.utils import recalculate_read_status
 except ImportError:
     print("Error: Could not import 'app.metadata'. Make sure you run this from the project root.")
     print("Usage: python import_csv.py [filename]")
@@ -119,6 +120,9 @@ def run_import():
             if user_rating_raw:
                 try: user_rating = float(user_rating_raw)
                 except: user_rating = None
+
+            # Optional "DNF" column: any truthy value marks this session as not finished
+            is_dnf = str(row.get("DNF") or "").strip().lower() in ("yes", "y", "true", "1", "x", "dnf")
 
             service_raw = row.get("Service", "Physical").strip()
             own_raw = row.get("Own?", "").lower()
@@ -238,7 +242,7 @@ def run_import():
                 formats = [format_consumed]
                 cursor.execute("""
                     INSERT INTO user_books (book_id, read_status, shelf_status, is_owned, formats_owned, effective_user_rating)
-                    VALUES (?, 'Read', 'Shelved', ?, ?, ?)
+                    VALUES (?, 'Unread', 'Shelved', ?, ?, ?)
                 """, (book_id, is_owned, json.dumps(formats), user_rating))
                 user_book_id = cursor.lastrowid
 
@@ -246,18 +250,19 @@ def run_import():
             try:
                 hours_raw = row.get("Hours")
                 try: final_hours = float(hours_raw)
-                except: final_hours = round(total_pages / 40, 1) if total_pages else 0
+                except: final_hours = round(total_pages / 40, 1) if total_pages and not is_dnf else 0
 
                 cursor.execute("SELECT id FROM reading_logs WHERE user_book_id = ? AND date_finished = ?", (user_book_id, clean_dt))
                 if not cursor.fetchone():
                     cursor.execute("""
-                        INSERT INTO reading_logs (user_book_id, date_finished, hours_read, format_consumed, is_borrowed, session_rating)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    """, (user_book_id, clean_dt, final_hours, format_consumed, is_borrowed, user_rating))
-                    print(f"     -> Log added.")
+                        INSERT INTO reading_logs (user_book_id, date_finished, hours_read, format_consumed, is_borrowed, is_dnf, session_rating)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, (user_book_id, clean_dt, final_hours, format_consumed, is_borrowed, is_dnf, user_rating))
+                    print(f"     -> Log added{' (DNF)' if is_dnf else ''}.")
                     success_count += 1
                 else:
                     print(f"     -> Log exists.")
+                recalculate_read_status(conn, user_book_id)
             
             except Exception as e:
                 print(f"  -> [FAIL] DB Error: {e}")

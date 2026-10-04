@@ -19,7 +19,7 @@
             <div class="w-full max-w-xs text-center mt-auto">
                 <button 
                     onclick="document.getElementById('cover-modal').classList.remove('hidden')"
-                    hx-get="/book/{{ book.book_id }}/cover_options" 
+                    hx-get="/book/{{ book.id }}/cover_options" 
                     hx-target="#modal-content" 
                     hx-indicator="#modal-loading"
                     class="text-xs font-bold text-blue-600 hover:text-blue-800 hover:underline flex items-center justify-center gap-1 mx-auto mb-2"
@@ -303,7 +303,7 @@
                     <div class="md:col-span-4 flex items-center justify-between pt-2">
                         <label class="flex items-center space-x-2 text-red-600 text-sm font-bold cursor-pointer">
                             <input type="checkbox" name="is_dnf" value="true" class="rounded text-red-600 focus:ring-red-500">
-                            <span>I am DNFing this book (Did Not Finish)</span>
+                            <span>I didn't finish this reading (DNF)</span>
                         </label>
 
                         <button type="submit" class="bg-blue-600 text-white px-6 py-1 rounded font-bold hover:bg-blue-700 text-sm">
@@ -341,7 +341,8 @@
 
                          {% if log.is_dnf %}
                             <span class="text-red-600 font-bold text-sm bg-red-50 px-2 py-1 rounded border border-red-100">DNF</span>
-                        {% else %}
+                        {% endif %}
+                        {% if log.hours_read %}
                              <span class="font-bold text-slate-700">{{ log.hours_read }} hrs</span>
                         {% endif %}
                         

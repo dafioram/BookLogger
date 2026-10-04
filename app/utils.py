@@ -79,3 +79,23 @@ def recalculate_book_rating(conn, user_book_id):
         SET effective_user_rating = ? 
         WHERE id = ?
     """, (new_rating, user_book_id))
+
+# Book-level read_status is derived from its reading sessions:
+#   any finished (non-DNF) session -> 'Read'
+#   only DNF sessions              -> 'DNF'
+#   no sessions                    -> 'Unread'
+READ_STATUS_SQL = """
+    CASE
+        WHEN EXISTS (SELECT 1 FROM reading_logs rl WHERE rl.user_book_id = user_books.id AND COALESCE(rl.is_dnf, 0) = 0) THEN 'Read'
+        WHEN EXISTS (SELECT 1 FROM reading_logs rl WHERE rl.user_book_id = user_books.id) THEN 'DNF'
+        ELSE 'Unread'
+    END
+"""
+
+def recalculate_read_status(conn, user_book_id):
+    """Re-derives user_books.read_status from the book's reading sessions."""
+    conn.execute(f"UPDATE user_books SET read_status = {READ_STATUS_SQL} WHERE id = ?", (user_book_id,))
+
+def recalculate_all_read_statuses(conn):
+    """Re-derives read_status for every book (repairs drift from older versions)."""
+    conn.execute(f"UPDATE user_books SET read_status = {READ_STATUS_SQL}")

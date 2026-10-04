@@ -19,9 +19,12 @@
         <div class="bg-blue-600 text-white p-6 rounded-lg shadow-lg flex flex-col justify-center">
             <div class="text-4xl font-bold">{{ data_books|sum }}</div>
             <div class="text-blue-100 uppercase text-xs font-bold tracking-wider">Books Finished</div>
+            {% if data_dnf|sum %}
+            <div class="text-blue-200 text-xs mt-1">+ {{ data_dnf|sum }} DNF</div>
+            {% endif %}
         </div>
         <div class="bg-purple-600 text-white p-6 rounded-lg shadow-lg flex flex-col justify-center">
-            <div class="text-4xl font-bold">{{ data_hours|sum }}</div>
+            <div class="text-4xl font-bold">{{ data_hours|sum|round(1) }}</div>
             <div class="text-purple-100 uppercase text-xs font-bold tracking-wider">Hours Read</div>
         </div>
         <div class="bg-emerald-600 text-white p-6 rounded-lg shadow-lg flex flex-col justify-center">
@@ -69,7 +72,7 @@
         
         <div class="divide-y divide-gray-100">
             {% for log in logs %}
-            <div class="p-3 md:p-4 flex items-center hover:bg-slate-50 transition group">
+            <div class="p-3 md:p-4 flex items-center hover:bg-slate-50 transition group {% if log.is_dnf %}bg-red-50/40{% endif %}">
                 
                 <div class="w-12 md:w-24 flex-shrink-0 text-right pr-3 md:pr-6 border-r border-gray-100 mr-3 md:mr-6">
                     <div class="text-xs md:text-sm font-bold text-slate-600">{{ log.date_finished[5:] }}</div>
@@ -78,7 +81,7 @@
 
                 <div class="flex-shrink-0 mr-3 md:mr-4">
                     <a href="/book/{{ log.book_id }}">
-                        <img src="{{ log.cover_url }}" class="w-10 h-14 md:w-12 md:h-16 object-cover rounded shadow-sm">
+                        <img src="{{ log.cover_url }}" class="w-10 h-14 md:w-12 md:h-16 object-cover rounded shadow-sm {% if log.is_dnf %}opacity-60 grayscale{% endif %}">
                     </a>
                 </div>
 
@@ -89,6 +92,12 @@
                     <div class="text-xs text-gray-500 truncate mb-1">{{ log.author }}</div>
                     
                     <div class="flex flex-wrap gap-2">
+                        {% if log.is_dnf %}
+                        <span class="bg-red-100 text-red-700 text-[10px] px-2 py-0.5 rounded-full border border-red-200 uppercase tracking-wide font-bold">
+                            DNF
+                        </span>
+                        {% endif %}
+
                         <span class="text-[10px] px-2 py-0.5 rounded-full border uppercase tracking-wide font-bold
                             {% if log.format_consumed == 'Physical' %}bg-blue-50 text-blue-700 border-blue-100
                             {% elif log.format_consumed == 'Kindle' %}bg-purple-50 text-purple-700 border-purple-100
@@ -140,15 +149,24 @@
         data: {
             labels: labels,
             datasets: [{
-                label: 'Books',
+                label: 'Finished',
                 data: {{ data_books|tojson }},
                 backgroundColor: '#2563EB',
+                borderRadius: 4
+            }, {
+                label: 'DNF',
+                data: {{ data_dnf|tojson }},
+                backgroundColor: '#EF4444',
                 borderRadius: 4
             }]
         },
         options: {
             ...commonOptions,
-            scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+            plugins: { legend: { display: {{ (data_dnf|sum > 0)|tojson }} } },
+            scales: {
+                x: { stacked: true },
+                y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 } }
+            }
         }
     });
 
