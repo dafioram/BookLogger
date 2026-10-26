@@ -77,3 +77,20 @@ def test_deleting_book_removes_its_tags_and_relations(client, db):
 
 def test_cover_proxy_removed(client):
     assert client.get("/api/cover_proxy?url=https://example.com/a.jpg").status_code == 404
+
+
+def test_library_sorts_by_recently_read_and_rating(client, db):
+    old = add_book(db, "Old Read")
+    new = add_book(db, "New Read")
+    add_book(db, "B Unread")
+    add_book(db, "A Unread")
+    log_read(client, old, "2024-01-01", rating="5")
+    log_read(client, new, "2026-01-01", rating="3")
+
+    titles = lambda sort: [b["title"] for b in client.get(f"/library?sort={sort}").context["books"]]
+    # Unread books go last, alphabetized
+    assert titles("recent_read_desc") == ["New Read", "Old Read", "A Unread", "B Unread"]
+    assert titles("rating_desc")[:2] == ["Old Read", "New Read"]
+
+    html = client.get("/library?sort=recent_read_desc").text
+    assert 'value="recent_read_desc" selected' in html and 'value="rating_desc"' in html
